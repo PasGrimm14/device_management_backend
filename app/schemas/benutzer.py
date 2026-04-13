@@ -4,7 +4,6 @@ from app.models.base import BenutzerRolle
 
 
 class BenutzerBase(BaseModel):
-    model_config = ConfigDict(use_enum_values=True)
 
     name: str = Field(..., max_length=150)
     email: EmailStr
@@ -21,7 +20,7 @@ class BenutzerResponse(BenutzerBase):
     id: int
     shibboleth_id: str
 
-    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BenutzerRolleUpdate(BaseModel):

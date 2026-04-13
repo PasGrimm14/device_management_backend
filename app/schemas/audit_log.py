@@ -8,7 +8,7 @@ from app.models.base import AktionType
 
 class AuditLogResponse(BaseModel):
     """Nur lesbar – AuditLogs werden ausschließlich serverseitig erstellt."""
-    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+    model_config = ConfigDict(from_attributes=True)
 
     id: int
     zeitstempel: datetime

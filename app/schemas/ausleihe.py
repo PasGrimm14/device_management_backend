@@ -17,7 +17,7 @@ class AusleiheCreate(BaseModel):
 
 
 class AusleiheResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+    model_config = ConfigDict(from_attributes=True)
 
     id: int
     geraet_id: int

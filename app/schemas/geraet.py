@@ -7,7 +7,6 @@ from app.models.base import GeraeteStatus
 
 
 class GeraetBase(BaseModel):
-    model_config = ConfigDict(use_enum_values=True)
 
     inventar_nummer: str = Field(..., max_length=50)
     name: str = Field(..., max_length=100)
@@ -28,7 +27,6 @@ class GeraetCreate(GeraetBase):
 
 class GeraetUpdate(BaseModel):
     """Erlaubt das partielle Aktualisieren von Geräten (PATCH)."""
-    model_config = ConfigDict(use_enum_values=True)
 
     name: Optional[str] = Field(default=None, max_length=100)
     standort: Optional[str] = Field(default=None, max_length=100)
@@ -41,4 +39,4 @@ class GeraetResponse(GeraetBase):
     id: int
     qr_code_url: str
 
-    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+    model_config = ConfigDict(from_attributes=True)
