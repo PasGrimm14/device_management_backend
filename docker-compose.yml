@@ -26,7 +26,11 @@ services:
     environment:
       DB_HOST: db
       CORS_ORIGINS: ${CORS_ORIGINS}
-      BASE_URL: ${BASE_URL}           
+      BASE_URL: ${BASE_URL}   
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      SECRET_KEY: ${SECRET_KEY}
     depends_on:
       db:
         condition: service_healthy
