@@ -6,8 +6,6 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
       MYSQL_DATABASE: ${DB_NAME}
-      MYSQL_USER: ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
     volumes:
       - mysql_data:/var/lib/mysql
     ports:
@@ -30,6 +28,16 @@ services:
     depends_on:
       db:
         condition: service_healthy
+  
+  phpmyadmin:
+    image: phpmyadmin:latest
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOST: db  # Muss dem Service-Namen der Datenbank entsprechen
+      PMA_PORT: 3306
+      PMA_ARBITRARY: 1
 
 volumes:
   mysql_data:

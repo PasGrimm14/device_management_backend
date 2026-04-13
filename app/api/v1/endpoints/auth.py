@@ -28,11 +28,15 @@ def local_login(payload: LocalLoginRequest, db: Session = Depends(get_db)) -> To
     )
 
     if benutzer is None:
+        # Erster Benutzer in der DB wird automatisch Administrator
+        ist_erster = db.query(Benutzer).first() is None
+        rolle = BenutzerRolle.ADMIN if ist_erster else BenutzerRolle.STANDARD
+
         benutzer = Benutzer(
             shibboleth_id=payload.shibboleth_id,
             name=payload.name,
             email=payload.email,
-            rolle=BenutzerRolle.STANDARD,
+            rolle=rolle,
         )
         db.add(benutzer)
         db.commit()
