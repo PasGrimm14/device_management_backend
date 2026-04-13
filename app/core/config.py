@@ -21,6 +21,15 @@ class Settings(BaseSettings):
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
         )
 
+    # JWT
+    SECRET_KEY: str
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+
+    # CORS – JSON-Array in der .env, z. B.:
+    # CORS_ORIGINS=["http://localhost:3000","http://localhost:5173"]
+    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+
     # Sentry (optional)
     SENTRY_DSN: str = ""
 
