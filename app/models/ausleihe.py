@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import Column, Integer, DateTime, Enum, ForeignKey
 from sqlalchemy.orm import relationship
 from .base import Base, AusleihStatus
@@ -10,7 +10,7 @@ class Ausleihe(Base):
     geraet_id = Column(Integer, ForeignKey('geraete.id'), nullable=False)
     nutzer_id = Column(Integer, ForeignKey('benutzer.id'), nullable=False)
     
-    startdatum = Column(DateTime, default=datetime.utcnow, nullable=False)
+    startdatum = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     geplantes_rueckgabedatum = Column(DateTime, nullable=False)
     tatsaechliches_rueckgabedatum = Column(DateTime, nullable=True)
     
