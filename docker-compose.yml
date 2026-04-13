@@ -24,7 +24,9 @@ services:
     restart: unless-stopped
     # env_file: .env             
     environment:
-      DB_HOST: db              
+      DB_HOST: db
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      BASE_URL: ${BASE_URL}           
     depends_on:
       db:
         condition: service_healthy
