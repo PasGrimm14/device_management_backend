@@ -1,5 +1,7 @@
 from sqlalchemy import Column, Integer, String, Date, Text, Enum
 from sqlalchemy.orm import relationship
+
+from app.core.config import settings
 from .base import Base, GeraeteStatus
 
 class Geraet(Base):
@@ -25,4 +27,4 @@ class Geraet(Base):
     @property
     def qr_code_url(self):
         """Generiert die eindeutige URL für den QR-Code."""
-        return f"https://svschefflenz.online/geraete/{self.id}"
+        return f"{settings.BASE_URL}/geraete/{self.id}"

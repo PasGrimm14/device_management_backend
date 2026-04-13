@@ -1,6 +1,9 @@
+import io
 from typing import Optional
 
+import qrcode
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db, require_admin
@@ -10,6 +13,20 @@ from app.models.benutzer import Benutzer
 from app.schemas.geraet import GeraetCreate, GeraetResponse, GeraetUpdate
 
 router = APIRouter()
+
+
+@router.get("/{geraet_id}/qr-code")
+def get_qr_code(
+    geraet_id: int,
+    db: Session = Depends(get_db),
+    _: Benutzer = Depends(get_current_user),
+):
+    geraet = crud.get_by_id(db, geraet_id)
+    img = qrcode.make(geraet.qr_code_url)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="image/png")
 
 
 @router.get("/", response_model=list[GeraetResponse])

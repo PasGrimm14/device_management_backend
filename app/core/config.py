@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # CORS_ORIGINS=["http://localhost:3000","http://localhost:5173"]
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
 
+    # Basis-URL für QR-Codes
+    BASE_URL: str = "http://localhost:8050"
+
     # Sentry (optional)
     SENTRY_DSN: str = ""
 
