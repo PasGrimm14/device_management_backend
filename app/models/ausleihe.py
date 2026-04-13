@@ -1,0 +1,26 @@
+from datetime import datetime, timedelta
+from sqlalchemy import Column, Integer, DateTime, Enum, ForeignKey
+from sqlalchemy.orm import relationship
+from .base import Base, AusleihStatus
+
+class Ausleihe(Base):
+    __tablename__ = 'ausleihen'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    geraet_id = Column(Integer, ForeignKey('geraete.id'), nullable=False)
+    nutzer_id = Column(Integer, ForeignKey('benutzer.id'), nullable=False)
+    
+    startdatum = Column(DateTime, default=datetime.utcnow, nullable=False)
+    geplantes_rueckgabedatum = Column(DateTime, nullable=False)
+    tatsaechliches_rueckgabedatum = Column(DateTime, nullable=True)
+    
+    status = Column(Enum(AusleihStatus), default=AusleihStatus.AKTIV, nullable=False)
+    verlaengerungen_anzahl = Column(Integer, default=0, nullable=False)
+
+    # Relationen
+    geraet = relationship("Geraet", back_populates="ausleihen")
+    nutzer = relationship("Benutzer", back_populates="ausleihen")
+
+    def init_rueckgabedatum(self):
+        if not self.geplantes_rueckgabedatum:
+            self.geplantes_rueckgabedatum = self.startdatum + timedelta(days=14)
