@@ -8,8 +8,10 @@ services:
       MYSQL_DATABASE: ${DB_NAME}
     volumes:
       - mysql_data:/var/lib/mysql
+    # Die Datenbank geben wir weiterhin nach außen frei (auf dem neuen Port 3307), 
+    # damit du dich z. B. mit DBeaver von deinem PC aus verbinden kannst.
     ports:
-      - "3306:3306"          # erreichbar vom Host für z. B. DBeaver
+      - "3307:3306"          
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
       interval: 10s
@@ -20,24 +22,22 @@ services:
   app:
     build: .
     restart: unless-stopped
-    env_file: .env             # liest alle Werte aus der lokalen .env
+    env_file: .env             
     environment:
-      DB_HOST: db              # überschreibt DB_HOST aus der .env mit dem Service-Namen
-    ports:
-      - "8000:8000"
+      DB_HOST: db              
     depends_on:
       db:
         condition: service_healthy
+    # KEINE Ports angegeben! Der Proxy greift intern darauf zu.
   
   phpmyadmin:
     image: phpmyadmin:latest
     restart: unless-stopped
-    ports:
-      - "8080:80"
     environment:
-      PMA_HOST: db  # Muss dem Service-Namen der Datenbank entsprechen
+      PMA_HOST: db  
       PMA_PORT: 3306
       PMA_ARBITRARY: 1
+    # KEINE Ports angegeben! Der Proxy greift intern darauf zu.
 
 volumes:
   mysql_data:
