@@ -6,7 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.minio_client import ensure_bucket_exists, get_minio_client
+from app.core.minio_client import ensure_bucket_exists, get_minio_client, get_minio_public_client
 from app.models.audit_log import AuditLog
 from app.models.base import AktionType
 from app.models.geraet import Geraet
@@ -102,7 +102,7 @@ def get_presigned_url(db: Session, geraet_id: int) -> str:
         )
 
     bild = db.get(GeraetBild, geraet.bild_id)
-    client = get_minio_client()
+    client = get_minio_public_client()
     url = client.presigned_get_object(
         settings.MINIO_BUCKET,
         bild.dateiname,

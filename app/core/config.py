@@ -34,7 +34,8 @@ class Settings(BaseSettings):
     BASE_URL: str = "http://localhost:8050"
 
     # MinIO
-    MINIO_ENDPOINT: str = "minio:9000"
+    MINIO_ENDPOINT: str = "minio:9000"        # intern (App → MinIO)
+    MINIO_PUBLIC_ENDPOINT: str = "minio:9000" # öffentlich (Presigned-URLs im Browser)
     MINIO_ACCESS_KEY: str
     MINIO_SECRET_KEY: str
     MINIO_BUCKET: str = "geraete-bilder"

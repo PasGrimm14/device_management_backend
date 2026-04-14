@@ -4,8 +4,19 @@ from app.core.config import settings
 
 
 def get_minio_client() -> Minio:
+    """Interner Client für Upload/Bucket-Operationen (App → MinIO)."""
     return Minio(
         settings.MINIO_ENDPOINT,
+        access_key=settings.MINIO_ACCESS_KEY,
+        secret_key=settings.MINIO_SECRET_KEY,
+        secure=settings.MINIO_SECURE,
+    )
+
+
+def get_minio_public_client() -> Minio:
+    """Client für Presigned-URLs – nutzt die öffentlich erreichbare Adresse."""
+    return Minio(
+        settings.MINIO_PUBLIC_ENDPOINT,
         access_key=settings.MINIO_ACCESS_KEY,
         secret_key=settings.MINIO_SECRET_KEY,
         secure=settings.MINIO_SECURE,
