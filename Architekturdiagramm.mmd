@@ -1,0 +1,77 @@
+flowchart TB
+    subgraph CLIENT["🖥️ Client"]
+        FE["Webframework (Django)"]
+    end
+
+    subgraph DOCKER["🐳 Docker Environment"]
+
+        subgraph API["⚡ FastAPI Application (Port 8050)"]
+            MAIN["main.py\nFastAPI App · CORS · Lifespan"]
+            ROUTER["API Router\n/api/v1"]
+
+            subgraph ENDPOINTS["Endpunkte"]
+                direction LR
+                AUTH_EP["/auth\nToken-Login"]
+                GERAETE_EP["/geraete\nGeräte"]
+                AUSLEIHEN_EP["/ausleihen\nAusleihen"]
+                RESERV_EP["/reservierungen\nReservierungen"]
+                BENUTZER_EP["/benutzer\nBenutzer"]
+                AUDIT_EP["/audit-logs\nAudit-Logs"]
+            end
+
+            DEPS["deps.py\nAuth + DB Dependency Injection"]
+            SECURITY["security.py\nJWT erstellen / dekodieren"]
+            CONFIG["config.py\npydantic-settings (.env)"]
+            SCHEDULER["⏰ APScheduler\ntägl. 01:00 UTC\nÜberfälligkeit prüfen"]
+        end
+
+        subgraph DB["🗄️ MySQL Datenbank"]
+            direction LR
+            T1["Geraete"]
+            T2["Benutzer"]
+            T3["Ausleihen"]
+            T4["Reservierungen"]
+            T5["Audit Logs"]
+        end
+
+        ALEMBIC["Alembic\nDB-Migrationen"]
+    end
+
+    subgraph EXT["☁️ Externe Services"]
+        SENTRY["Sentry\nError Monitoring (optional)"]
+    end
+
+    %% Client → API
+    FE -->|"HTTP Bearer JWT"| MAIN
+
+    %% App-Kern
+    MAIN --> ROUTER
+    MAIN --> CONFIG
+    MAIN --> SCHEDULER
+    MAIN -.->|"optional"| SENTRY
+
+    %% Router → Endpoints
+    ROUTER --> AUTH_EP
+    ROUTER --> GERAETE_EP
+    ROUTER --> AUSLEIHEN_EP
+    ROUTER --> RESERV_EP
+    ROUTER --> BENUTZER_EP
+    ROUTER --> AUDIT_EP
+
+    %% Endpoints → deps
+    AUTH_EP --> DEPS
+    GERAETE_EP --> DEPS
+    AUSLEIHEN_EP --> DEPS
+    RESERV_EP --> DEPS
+    BENUTZER_EP --> DEPS
+    AUDIT_EP --> DEPS
+
+    %% deps → intern
+    DEPS --> SECURITY
+    DEPS -->|"SQLAlchemy Session"| DB
+
+    %% Scheduler → DB
+    SCHEDULER -->|"SQLAlchemy Session"| DB
+
+    %% Alembic → DB
+    ALEMBIC -->|"Schema-Migration"| DB
