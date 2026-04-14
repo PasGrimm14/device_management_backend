@@ -18,7 +18,7 @@ services:
       start_period: 30s
     networks:
       - default
-      - proxy_network
+      - proxy-network
 
   minio:
     image: minio/minio:latest
@@ -40,7 +40,7 @@ services:
       - "9003:9001"
     networks:
       - default
-      - proxy_network
+      - proxy-network
 
   app:
     build: .
@@ -65,7 +65,7 @@ services:
         condition: service_healthy
     networks:
       - default
-      - proxy_network
+      - proxy-network
 
   phpmyadmin:
     image: phpmyadmin:latest
@@ -76,7 +76,7 @@ services:
       PMA_ARBITRARY: 1
     networks:
       - default
-      - proxy_network
+      - proxy-network
 
 volumes:
   mysql_data:
@@ -84,5 +84,6 @@ volumes:
 
 networks:
   default:
-  proxy_network:
+  proxy-network:
+    name: proxy-network
     external: true
