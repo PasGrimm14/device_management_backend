@@ -8,8 +8,6 @@ services:
       MYSQL_DATABASE: ${DB_NAME}
     volumes:
       - mysql_data:/var/lib/mysql
-    # Die Datenbank geben wir weiterhin nach außen frei (auf dem neuen Port 3307), 
-    # damit du dich z. B. mit DBeaver von deinem PC aus verbinden kannst.
     ports:
       - "3307:3306"          
     healthcheck:
@@ -18,6 +16,9 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+    networks:
+      - default
+      - proxy_network
 
   minio:
     image: minio/minio:latest
@@ -35,13 +36,15 @@ services:
       retries: 5
       start_period: 10s
     ports:
-      - "9002:9000"   # MinIO API  → Nginx proxy_pass http://127.0.0.1:9002
-      - "9003:9001"   # MinIO UI   → Nginx proxy_pass http://127.0.0.1:9003
+      - "9002:9000"
+      - "9003:9001"
+    networks:
+      - default
+      - proxy_network
 
   app:
     build: .
     restart: unless-stopped
-    # env_file: .env
     environment:
       DB_HOST: db
       CORS_ORIGINS: ${CORS_ORIGINS}
@@ -60,8 +63,10 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-    # KEINE Ports angegeben! Der Proxy greift intern darauf zu.
-  
+    networks:
+      - default
+      - proxy_network
+
   phpmyadmin:
     image: phpmyadmin:latest
     restart: unless-stopped
@@ -69,8 +74,15 @@ services:
       PMA_HOST: db  
       PMA_PORT: 3306
       PMA_ARBITRARY: 1
-    # KEINE Ports angegeben! Der Proxy greift intern darauf zu.
+    networks:
+      - default
+      - proxy_network
 
 volumes:
   mysql_data:
   minio_data:
+
+networks:
+  default:
+  proxy_network:
+    external: true
