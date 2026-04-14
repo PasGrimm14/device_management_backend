@@ -14,7 +14,7 @@ class GeraetBase(BaseModel):
     hersteller: Optional[str] = Field(default=None, max_length=50)
     modell: Optional[str] = Field(default=None, max_length=50)
     seriennummer: Optional[str] = Field(default=None, max_length=100)
-    standort: Optional[str] = Field(default=None, max_length=100)
+    box_id: Optional[int] = None
     status: GeraeteStatus = GeraeteStatus.VERFUEGBAR
     anschaffungsdatum: Optional[date] = None
     bemerkungen: Optional[str] = None
@@ -29,7 +29,7 @@ class GeraetUpdate(BaseModel):
     """Erlaubt das partielle Aktualisieren von Geräten (PATCH)."""
 
     name: Optional[str] = Field(default=None, max_length=100)
-    standort: Optional[str] = Field(default=None, max_length=100)
+    box_id: Optional[int] = None
     status: Optional[GeraeteStatus] = None
     bemerkungen: Optional[str] = None
 

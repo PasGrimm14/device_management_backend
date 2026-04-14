@@ -14,14 +14,15 @@ class Geraet(Base):
     hersteller = Column(String(50))
     modell = Column(String(50))
     seriennummer = Column(String(100), unique=True)
-    standort = Column(String(100))
     status = Column(Enum(GeraeteStatus), default=GeraeteStatus.VERFUEGBAR, nullable=False)
     anschaffungsdatum = Column(Date)
     bemerkungen = Column(Text)
     bild_id = Column(Integer, ForeignKey("geraet_bilder.id"), nullable=True)
+    box_id = Column(Integer, ForeignKey("boxen.id"), nullable=True)
 
     # Relationen
     bild = relationship("GeraetBild", back_populates="geraete")
+    box = relationship("Box", back_populates="geraete")
     ausleihen = relationship("Ausleihe", back_populates="geraet")
     reservierungen = relationship("Reservierung", back_populates="geraet")
     audit_logs = relationship("AuditLog", back_populates="geraet")
