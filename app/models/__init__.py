@@ -1,9 +1,13 @@
 # 1. Zuerst das Base und die Enums laden
 from .base import Base, GeraeteStatus, BenutzerRolle, AusleihStatus, ReservierungsStatus, AktionType
 
-# 2. Dann alle Tabellen-Modelle laden, damit sie an das Base gebunden werden
+# 2. Dann alle Tabellen-Modelle laden, damit sie an das Base gebunden werden.
+#    Reihenfolge beachten: übergeordnete Tabellen zuerst (wegen FK-Abhängigkeiten).
 from .benutzer import Benutzer
 from .geraet_bild import GeraetBild
+from .bildungseinrichtung import Bildungseinrichtung
+from .standort import Standort
+from .box import Box
 from .geraet import Geraet
 from .ausleihe import Ausleihe
 from .reservierung import Reservierung
@@ -19,6 +23,9 @@ __all__ = [
     "AktionType",
     "Benutzer",
     "GeraetBild",
+    "Bildungseinrichtung",
+    "Standort",
+    "Box",
     "Geraet",
     "Ausleihe",
     "Reservierung",
