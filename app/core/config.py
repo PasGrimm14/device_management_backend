@@ -7,6 +7,10 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Device Management API"
     API_V1_STR: str = "/api/v1"
 
+    # Umgebung: "development" | "production"
+    # Steuert u. a., ob der lokale Test-Login-Endpoint aktiv ist.
+    ENV: str = "development"
+
     # Database
     DB_HOST: str
     DB_PORT: int = 3306
