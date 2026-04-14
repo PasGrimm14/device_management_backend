@@ -4,6 +4,12 @@ REST-API für ein Geräteverwaltungssystem — entwickelt mit **FastAPI**, **SQL
 
 ---
 
+## Architektur
+
+![Architekturdiagramm](Architekturdiagramm.png)
+
+---
+
 ## Tech-Stack
 
 | Komponente    | Technologie                  |
