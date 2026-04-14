@@ -8,9 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db, require_admin
 from app.crud import geraete as crud
+from app.crud import geraet_bilder as crud_bilder
 from app.models.base import GeraeteStatus
 from app.models.benutzer import Benutzer
 from app.schemas.geraet import GeraetCreate, GeraetResponse, GeraetUpdate
+from app.schemas.geraet_bild import GeraetBildUrlResponse
 
 router = APIRouter()
 
@@ -76,3 +78,14 @@ def delete_geraet(
     _: Benutzer = Depends(require_admin),
 ):
     crud.delete(db, geraet_id)
+
+
+@router.get("/{geraet_id}/bild", response_model=GeraetBildUrlResponse)
+def get_geraet_bild(
+    geraet_id: int,
+    db: Session = Depends(get_db),
+    _: Benutzer = Depends(get_current_user),
+):
+    """Gibt eine Presigned-URL (1 Stunde) für das Bild des Geräts zurück."""
+    url = crud_bilder.get_presigned_url(db, geraet_id)
+    return GeraetBildUrlResponse(presigned_url=url)

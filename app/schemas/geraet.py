@@ -37,6 +37,7 @@ class GeraetUpdate(BaseModel):
 class GeraetResponse(GeraetBase):
     """Die Antwortstruktur, die das Frontend erhält."""
     id: int
+    bild_id: Optional[int] = None
     qr_code_url: str
 
     model_config = ConfigDict(from_attributes=True)

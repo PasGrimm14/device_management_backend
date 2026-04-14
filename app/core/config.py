@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     # Basis-URL für QR-Codes
     BASE_URL: str = "http://localhost:8050"
 
+    # MinIO
+    MINIO_ENDPOINT: str = "minio:9000"
+    MINIO_ACCESS_KEY: str
+    MINIO_SECRET_KEY: str
+    MINIO_BUCKET: str = "geraete-bilder"
+    MINIO_SECURE: bool = False
+
     # Sentry (optional)
     SENTRY_DSN: str = ""
 

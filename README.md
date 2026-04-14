@@ -21,6 +21,7 @@ REST-API für ein Geräteverwaltungssystem — entwickelt mit **FastAPI**, **SQL
 | Auth          | JWT (PyJWT, HS256)           |
 | Scheduler     | APScheduler                  |
 | QR-Codes      | qrcode + Pillow              |
+| Bildspeicher  | MinIO (S3-kompatibel)        |
 | Monitoring    | Sentry (optional)            |
 | Server        | Uvicorn                      |
 | Container     | Docker + Docker Compose      |
@@ -57,14 +58,24 @@ device_management_backend/
 
 ## API-Endpunkte (`/api/v1`)
 
-| Prefix             | Tag             | Beschreibung                             |
-|--------------------|-----------------|------------------------------------------|
-| `/auth`            | Auth            | Login, Token-Vergabe                     |
-| `/geraete`         | Geräte          | CRUD-Operationen, QR-Code-Generierung    |
-| `/ausleihen`       | Ausleihen       | Ausleihe starten, verlängern, zurückgeben|
-| `/reservierungen`  | Reservierungen  | Reservierungen anlegen & verwalten       |
-| `/benutzer`        | Benutzer        | Benutzerverwaltung                       |
-| `/audit-logs`      | Audit-Logs      | Nachvollziehbare Aktionshistorie         |
+| Prefix                  | Tag             | Beschreibung                                      |
+|-------------------------|-----------------|---------------------------------------------------|
+| `/auth`                 | Auth            | Login, Token-Vergabe                              |
+| `/geraete`              | Geräte          | CRUD-Operationen, QR-Code, Bild-URL               |
+| `/ausleihen`            | Ausleihen       | Ausleihe starten, verlängern, zurückgeben         |
+| `/reservierungen`       | Reservierungen  | Reservierungen anlegen & verwalten                |
+| `/benutzer`             | Benutzer        | Benutzerverwaltung                                |
+| `/audit-logs`           | Audit-Logs      | Nachvollziehbare Aktionshistorie                  |
+| `/admin/bilder`         | Bilder          | Bild hochladen (Admin)                            |
+| `/admin/geraete`        | Bilder          | Bild einem Gerät zuweisen (Admin)                 |
+
+### Bild-Endpunkte im Detail
+
+| Methode | Pfad                                  | Berechtigung | Beschreibung                              |
+|---------|---------------------------------------|--------------|-------------------------------------------|
+| `POST`  | `/api/v1/admin/bilder`                | Admin        | Neues Bild hochladen → gibt `bild_id` zurück |
+| `PUT`   | `/api/v1/admin/geraete/{id}/bild`     | Admin        | Vorhandenes Bild einem Gerät zuweisen     |
+| `GET`   | `/api/v1/geraete/{id}/bild`           | Alle         | Presigned-URL (1 h) für das Gerätebild   |
 
 Die interaktive API-Dokumentation ist unter `/api/v1/openapi.json` (Swagger UI: `/docs`, Redoc: `/redoc`) erreichbar.
 
@@ -123,6 +134,12 @@ SECRET_KEY=dein_geheimer_schluessel
 CORS_ORIGINS=["http://localhost:3000","http://localhost:5173"]
 BASE_URL=http://localhost:8000
 
+# MinIO
+MINIO_ENDPOINT=localhost:9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
+MINIO_BUCKET=geraete-bilder
+
 # Optional
 SENTRY_DSN=
 ```
@@ -134,19 +151,29 @@ alembic upgrade head
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
+> Für lokale MinIO-Entwicklung kann ein MinIO-Server per Docker gestartet werden:
+> ```bash
+> docker run -p 9000:9000 -p 9001:9001 \
+>   -e MINIO_ROOT_USER=minioadmin \
+>   -e MINIO_ROOT_PASSWORD=minioadmin \
+>   minio/minio server /data --console-address ":9001"
+> ```
+> Anschließend `MINIO_ENDPOINT=localhost:9000` in der `.env` setzen.
+
 ---
 
 ## Docker-Deployment
 
-Das `docker-compose.yml` startet drei Services:
+Das `docker-compose.yml` startet vier Services:
 
 | Service       | Beschreibung                          | Port (Host) |
 |---------------|---------------------------------------|-------------|
 | `db`          | MySQL 8.0                             | `3307`      |
+| `minio`       | Objektspeicher für Gerätebilder       | intern      |
 | `app`         | FastAPI-Anwendung                     | intern      |
 | `phpmyadmin`  | Datenbank-Verwaltungsoberfläche       | intern      |
 
-`app` und `phpmyadmin` sind bewusst **ohne externe Ports** konfiguriert — der Zugriff erfolgt über einen vorgelagerten Reverse Proxy.
+`app`, `minio` und `phpmyadmin` sind bewusst **ohne externe Ports** konfiguriert — der Zugriff erfolgt über einen vorgelagerten Reverse Proxy.
 
 ### Starten
 

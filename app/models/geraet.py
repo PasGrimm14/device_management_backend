@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Date, Text, Enum
+from sqlalchemy import Column, ForeignKey, Integer, String, Date, Text, Enum
 from sqlalchemy.orm import relationship
 
 from app.core.config import settings
@@ -18,8 +18,10 @@ class Geraet(Base):
     status = Column(Enum(GeraeteStatus), default=GeraeteStatus.VERFUEGBAR, nullable=False)
     anschaffungsdatum = Column(Date)
     bemerkungen = Column(Text)
+    bild_id = Column(Integer, ForeignKey("geraet_bilder.id"), nullable=True)
 
     # Relationen
+    bild = relationship("GeraetBild", back_populates="geraete")
     ausleihen = relationship("Ausleihe", back_populates="geraet")
     reservierungen = relationship("Reservierung", back_populates="geraet")
     audit_logs = relationship("AuditLog", back_populates="geraet")
