@@ -88,10 +88,10 @@ def create(db: Session, payload: AusleiheCreate, current_user: Benutzer) -> Ausl
 
 def verlaengern(db: Session, ausleihe_id: int, current_user: Benutzer) -> Ausleihe:
     ausleihe = get_by_id(db, ausleihe_id, current_user)
-    if ausleihe.status != AusleihStatus.AKTIV:
+    if ausleihe.status not in (AusleihStatus.AKTIV, AusleihStatus.UEBERFAELLIG):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Nur aktive Ausleihen können verlängert werden.",
+            detail="Nur aktive oder überfällige Ausleihen können verlängert werden.",
         )
 
     fremde_reservierung = (
