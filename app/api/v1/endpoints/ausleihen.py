@@ -1,12 +1,41 @@
-from fastapi import APIRouter, Depends, Query
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Body, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import get_current_user, get_db, require_admin
 from app.crud import ausleihen as crud
+from app.models.ausleihe import Ausleihe
+from app.models.base import AusleihStatus
 from app.models.benutzer import Benutzer
-from app.schemas.ausleihe import AusleiheCreate, AusleiheResponse
+from app.schemas.ausleihe import AusleiheCreate, AusleiheResponse, AusleiheUeberfaelligResponse, RueckgabePayload
 
 router = APIRouter()
+
+
+@router.get("/ueberfaellig", response_model=list[AusleiheUeberfaelligResponse])
+def list_ueberfaellige_ausleihen(
+    db: Session = Depends(get_db),
+    _: Benutzer = Depends(require_admin),
+):
+    """Gibt alle überfälligen Ausleihen zurück, sortiert nach längster Überschreitung.
+
+    Nur für Administratoren zugänglich.
+    """
+    ausleihen = (
+        db.query(Ausleihe)
+        .filter(Ausleihe.status == AusleihStatus.UEBERFAELLIG)
+        .order_by(Ausleihe.geplantes_rueckgabedatum.asc())
+        .all()
+    )
+    now = datetime.now(timezone.utc)
+    result = []
+    for ausleihe in ausleihen:
+        tage = (now - ausleihe.geplantes_rueckgabedatum).days
+        base = AusleiheResponse.model_validate(ausleihe).model_dump()
+        base["ueberfaellig_seit_tagen"] = tage
+        result.append(AusleiheUeberfaelligResponse(**base))
+    return result
 
 
 @router.get("/", response_model=list[AusleiheResponse])
@@ -49,7 +78,8 @@ def verlaengern(
 @router.post("/{ausleihe_id}/rueckgabe", response_model=AusleiheResponse)
 def rueckgabe(
     ausleihe_id: int,
+    payload: RueckgabePayload = Body(default_factory=RueckgabePayload),
     db: Session = Depends(get_db),
     current_user: Benutzer = Depends(get_current_user),
 ):
-    return crud.rueckgabe(db, ausleihe_id, current_user)
+    return crud.rueckgabe(db, ausleihe_id, current_user, zustand=payload.zustand_bei_rueckgabe)

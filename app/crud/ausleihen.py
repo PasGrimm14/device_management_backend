@@ -93,6 +93,22 @@ def verlaengern(db: Session, ausleihe_id: int, current_user: Benutzer) -> Auslei
             status_code=status.HTTP_409_CONFLICT,
             detail="Nur aktive Ausleihen können verlängert werden.",
         )
+
+    fremde_reservierung = (
+        db.query(Reservierung)
+        .filter(
+            Reservierung.geraet_id == ausleihe.geraet_id,
+            Reservierung.status == ReservierungsStatus.AKTIV,
+            Reservierung.nutzer_id != current_user.id,
+        )
+        .first()
+    )
+    if fremde_reservierung:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Verlängerung nicht möglich – Gerät ist von einer anderen Person reserviert.",
+        )
+
     if ausleihe.verlaengerungen_anzahl >= MAX_VERLAENGERUNGEN:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -113,7 +129,12 @@ def verlaengern(db: Session, ausleihe_id: int, current_user: Benutzer) -> Auslei
     return ausleihe
 
 
-def rueckgabe(db: Session, ausleihe_id: int, current_user: Benutzer) -> Ausleihe:
+def rueckgabe(
+    db: Session,
+    ausleihe_id: int,
+    current_user: Benutzer,
+    zustand: str | None = None,
+) -> Ausleihe:
     ausleihe = get_by_id(db, ausleihe_id, current_user)
     if ausleihe.status not in (AusleihStatus.AKTIV, AusleihStatus.UEBERFAELLIG):
         raise HTTPException(
@@ -125,16 +146,29 @@ def rueckgabe(db: Session, ausleihe_id: int, current_user: Benutzer) -> Ausleihe
     ausleihe.tatsaechliches_rueckgabedatum = now
     ausleihe.status = AusleihStatus.ABGESCHLOSSEN
 
-    offene_reservierung = (
-        db.query(Reservierung)
-        .filter(
-            Reservierung.geraet_id == ausleihe.geraet_id,
-            Reservierung.status == ReservierungsStatus.AKTIV,
-        )
-        .first()
-    )
+    if zustand:
+        ausleihe.zustand_bei_rueckgabe = zustand
+
     geraet = db.get(Geraet, ausleihe.geraet_id)
-    geraet.status = GeraeteStatus.RESERVIERT if offene_reservierung else GeraeteStatus.VERFUEGBAR
+
+    if zustand:
+        geraet.status = GeraeteStatus.DEFEKT
+        db.add(AuditLog(
+            nutzer_id=current_user.id,
+            geraet_id=geraet.id,
+            aktion=AktionType.STATUS_AENDERUNG,
+            details=f"Gerät '{geraet.name}' bei Rückgabe als defekt gemeldet: {zustand}",
+        ))
+    else:
+        offene_reservierung = (
+            db.query(Reservierung)
+            .filter(
+                Reservierung.geraet_id == ausleihe.geraet_id,
+                Reservierung.status == ReservierungsStatus.AKTIV,
+            )
+            .first()
+        )
+        geraet.status = GeraeteStatus.RESERVIERT if offene_reservierung else GeraeteStatus.VERFUEGBAR
 
     db.add(AuditLog(
         nutzer_id=current_user.id,

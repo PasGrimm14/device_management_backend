@@ -14,6 +14,7 @@ def get_all(
     *,
     filter_status: Optional[GeraeteStatus] = None,
     filter_kategorie: Optional[str] = None,
+    filter_search: Optional[str] = None,
     skip: int = 0,
     limit: int = 50,
 ) -> list[Geraet]:
@@ -22,6 +23,14 @@ def get_all(
         q = q.filter(Geraet.status == filter_status)
     if filter_kategorie is not None:
         q = q.filter(Geraet.kategorie == filter_kategorie)
+    if filter_search is not None:
+        term = f"%{filter_search}%"
+        q = q.filter(
+            Geraet.name.ilike(term)
+            | Geraet.hersteller.ilike(term)
+            | Geraet.modell.ilike(term)
+            | Geraet.inventar_nummer.ilike(term)
+        )
     return q.offset(skip).limit(limit).all()
 
 

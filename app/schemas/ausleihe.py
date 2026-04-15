@@ -16,6 +16,15 @@ class AusleiheCreate(BaseModel):
     geplantes_rueckgabedatum: Optional[datetime] = None
 
 
+class RueckgabePayload(BaseModel):
+    """Optionaler Body für den Rückgabe-Endpoint.
+
+    Ermöglicht die Erfassung von Schäden oder besonderen Zuständen
+    bei der Geräterückgabe.
+    """
+    zustand_bei_rueckgabe: Optional[str] = None
+
+
 class AusleiheResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -27,4 +36,13 @@ class AusleiheResponse(BaseModel):
     tatsaechliches_rueckgabedatum: Optional[datetime] = None
     status: AusleihStatus
     verlaengerungen_anzahl: int
+    zustand_bei_rueckgabe: Optional[str] = None
     geraet: Optional[GeraetResponse] = None
+
+
+class AusleiheUeberfaelligResponse(AusleiheResponse):
+    """Erweitertes Antwortschema für überfällige Ausleihen.
+
+    Enthält zusätzlich die Anzahl der Tage, um die die Rückgabe überschritten ist.
+    """
+    ueberfaellig_seit_tagen: int

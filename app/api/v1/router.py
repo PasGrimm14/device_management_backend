@@ -1,6 +1,18 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import audit_logs, auth, ausleihen, benutzer, bilder, geraete, qr_nfc, reservierungen, standorte
+from app.api.v1.endpoints import (
+    audit_logs,
+    auth,
+    ausleihen,
+    benutzer,
+    bilder,
+    export,
+    geraete,
+    qr_nfc,
+    reservierungen,
+    standorte,
+    statistik,
+)
 
 api_router = APIRouter()
 
@@ -17,3 +29,5 @@ api_router.include_router(benutzer.router,                  prefix="/benutzer", 
 api_router.include_router(audit_logs.router,                prefix="/audit-logs",    tags=["Audit-Logs"])
 api_router.include_router(bilder.upload_router,             prefix="/admin/bilder",  tags=["Bilder"])
 api_router.include_router(bilder.admin_geraet_bild_router,  prefix="/admin/geraete", tags=["Bilder"])
+api_router.include_router(export.router,                    prefix="/export",        tags=["Export"])
+api_router.include_router(statistik.router,                 prefix="/statistik",     tags=["Statistik"])

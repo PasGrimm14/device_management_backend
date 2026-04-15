@@ -18,12 +18,13 @@ router = APIRouter()
 def list_geraete(
     status: Optional[GeraeteStatus] = Query(default=None),
     kategorie: Optional[str] = Query(default=None),
+    q: Optional[str] = Query(default=None, description="Freitext-Suche in Name, Hersteller, Modell, Inventarnummer"),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
     _: Benutzer = Depends(get_current_user),
 ):
-    return crud.get_all(db, filter_status=status, filter_kategorie=kategorie, skip=skip, limit=limit)
+    return crud.get_all(db, filter_status=status, filter_kategorie=kategorie, filter_search=q, skip=skip, limit=limit)
 
 
 @router.get("/{geraet_id}", response_model=GeraetResponse)

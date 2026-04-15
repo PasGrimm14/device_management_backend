@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -44,6 +46,13 @@ class Settings(BaseSettings):
     MINIO_SECRET_KEY: str
     MINIO_BUCKET: str = "geraete-bilder"
     MINIO_SECURE: bool = False
+
+    # SMTP (optional – wenn nicht gesetzt, werden E-Mails nur geloggt)
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USER: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_FROM: Optional[str] = None
 
     # Sentry (optional)
     SENTRY_DSN: str = ""
