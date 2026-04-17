@@ -14,10 +14,7 @@ scheduler = BackgroundScheduler(timezone="UTC")
 
 
 def mark_ueberfaellige_ausleihen() -> None:
-    """Setzt alle aktiven Ausleihen, deren Rückgabedatum überschritten ist, auf UEBERFAELLIG.
-
-    Wird täglich um 01:00 Uhr UTC ausgeführt.
-    """
+    """Setzt alle aktiven Ausleihen, deren Rückgabedatum überschritten ist, auf UEBERFAELLIG."""
     db = SessionLocal()
     try:
         now = datetime.now(timezone.utc)
@@ -31,10 +28,8 @@ def mark_ueberfaellige_ausleihen() -> None:
         )
         if not betroffene:
             return
-
         for ausleihe in betroffene:
             ausleihe.status = AusleihStatus.UEBERFAELLIG
-
         db.commit()
         logger.info("%d Ausleihe(n) als überfällig markiert.", len(betroffene))
     except Exception:
@@ -45,10 +40,7 @@ def mark_ueberfaellige_ausleihen() -> None:
 
 
 def send_erinnerungen() -> None:
-    """Sendet Frist-Erinnerungen für Ausleihen, deren Rückgabe morgen oder übermorgen fällig ist.
-
-    Wird täglich um 08:00 Uhr UTC ausgeführt.
-    """
+    """Sendet Frist-Erinnerungen für Ausleihen, deren Rückgabe morgen oder übermorgen fällig ist."""
     db = SessionLocal()
     try:
         now = datetime.now(timezone.utc)
@@ -66,7 +58,6 @@ def send_erinnerungen() -> None:
         )
         if not betroffene:
             return
-
         for ausleihe in betroffene:
             nutzer = ausleihe.nutzer
             geraet = ausleihe.geraet
@@ -83,7 +74,6 @@ def send_erinnerungen() -> None:
                 ),
             )
             ausleihe.erinnerung_gesendet = True
-
         db.commit()
         logger.info("%d Erinnerung(en) versendet.", len(betroffene))
     except Exception:
@@ -94,10 +84,7 @@ def send_erinnerungen() -> None:
 
 
 def send_mahnungen() -> None:
-    """Sendet Mahnungen für überfällige Ausleihen, bei denen noch keine Mahnung versendet wurde.
-
-    Wird täglich um 08:00 Uhr UTC ausgeführt.
-    """
+    """Sendet Mahnungen für überfällige Ausleihen, bei denen noch keine Mahnung versendet wurde."""
     db = SessionLocal()
     try:
         betroffene = (
@@ -110,7 +97,6 @@ def send_mahnungen() -> None:
         )
         if not betroffene:
             return
-
         for ausleihe in betroffene:
             nutzer = ausleihe.nutzer
             geraet = ausleihe.geraet
@@ -127,7 +113,6 @@ def send_mahnungen() -> None:
                 ),
             )
             ausleihe.mahnung_gesendet = True
-
         db.commit()
         logger.info("%d Mahnung(en) versendet.", len(betroffene))
     except Exception:
@@ -137,34 +122,55 @@ def send_mahnungen() -> None:
         db.close()
 
 
+def ablauf_reservierungen_pruefen() -> None:
+    """Setzt Reservierungen, deren Ablaufdatum überschritten ist, auf STORNIERT
+    und gibt das Gerät wieder als verfügbar frei. Täglich um 01:15 UTC."""
+    # Import hier um zirkuläre Imports zu vermeiden
+    from app.crud.reservierungen import ablauf_pruefen
+    db = SessionLocal()
+    try:
+        anzahl = ablauf_pruefen(db)
+        if anzahl:
+            logger.info("%d abgelaufene Reservierung(en) storniert.", anzahl)
+    except Exception:
+        logger.exception("Fehler beim Prüfen abgelaufener Reservierungen.")
+    finally:
+        db.close()
+
+
 def start_scheduler() -> None:
     scheduler.add_job(
         mark_ueberfaellige_ausleihen,
         trigger="cron",
-        hour=1,
-        minute=0,
+        hour=1, minute=0,
         id="mark_ueberfaellig",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        ablauf_reservierungen_pruefen,
+        trigger="cron",
+        hour=1, minute=15,
+        id="ablauf_reservierungen",
         replace_existing=True,
     )
     scheduler.add_job(
         send_erinnerungen,
         trigger="cron",
-        hour=8,
-        minute=0,
+        hour=8, minute=0,
         id="send_erinnerungen",
         replace_existing=True,
     )
     scheduler.add_job(
         send_mahnungen,
         trigger="cron",
-        hour=8,
-        minute=0,
+        hour=8, minute=0,
         id="send_mahnungen",
         replace_existing=True,
     )
     scheduler.start()
     logger.info(
         "Scheduler gestartet – Überfälligkeits-Job 01:00 UTC, "
+        "Reservierungs-Ablauf-Job 01:15 UTC, "
         "Erinnerungs- und Mahnungs-Jobs 08:00 UTC."
     )
 

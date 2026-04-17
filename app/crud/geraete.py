@@ -1,3 +1,4 @@
+import re
 from typing import Optional
 
 from fastapi import HTTPException, status
@@ -7,6 +8,44 @@ from app.models.audit_log import AuditLog
 from app.models.base import AktionType, GeraeteStatus
 from app.models.geraet import Geraet
 from app.schemas.geraet import GeraetCreate, GeraetUpdate
+
+# Unique-Name beginnt bei dieser Basis-Nummer
+_UNIQUE_NAME_START = 1000
+_UNIQUE_NAME_STEP = 5   # Schrittweite, damit Lücken möglich sind (1000,1005,1010,…)
+
+
+def _slugify(text: str) -> str:
+    """Konvertiert beliebigen Text in einen URL-/Label-freundlichen Slug."""
+    if not text:
+        return "Unbekannt"
+    # Unicode → ASCII-ähnlich, Leerzeichen → Bindestrich, Sonderzeichen entfernen
+    text = text.strip()
+    text = re.sub(r'\s+', '-', text)
+    text = re.sub(r'[^\w\-]', '', text, flags=re.UNICODE)
+    return text or "Unbekannt"
+
+
+def _generate_unique_name(db: Session, kategorie: Optional[str], hersteller: Optional[str]) -> str:
+    """Generiert einen eindeutigen Gerätenamen im Format Kategorie-Hersteller-NNNN."""
+    kat = _slugify(kategorie or "Sonstiges")
+    her = _slugify(hersteller or "Unbekannt")
+    prefix = f"{kat}-{her}-"
+
+    # Alle vorhandenen unique_names mit diesem Prefix laden und höchste Nummer ermitteln
+    existing = (
+        db.query(Geraet.unique_name)
+        .filter(Geraet.unique_name.like(f"{prefix}%"))
+        .all()
+    )
+    max_nr = _UNIQUE_NAME_START - _UNIQUE_NAME_STEP
+    for (uname,) in existing:
+        if uname:
+            parts = uname.rsplit("-", 1)
+            if len(parts) == 2 and parts[1].isdigit():
+                max_nr = max(max_nr, int(parts[1]))
+
+    next_nr = max_nr + _UNIQUE_NAME_STEP
+    return f"{prefix}{next_nr}"
 
 
 def get_all(
@@ -30,6 +69,7 @@ def get_all(
             | Geraet.hersteller.ilike(term)
             | Geraet.modell.ilike(term)
             | Geraet.inventar_nummer.ilike(term)
+            | Geraet.unique_name.ilike(term)
         )
     return q.offset(skip).limit(limit).all()
 
@@ -47,14 +87,17 @@ def create(db: Session, payload: GeraetCreate, nutzer_id: int) -> Geraet:
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Inventarnummer '{payload.inventar_nummer}' ist bereits vergeben.",
         )
-    geraet = Geraet(**payload.model_dump())
+
+    unique_name = _generate_unique_name(db, payload.kategorie, payload.hersteller)
+
+    geraet = Geraet(**payload.model_dump(), unique_name=unique_name)
     db.add(geraet)
     db.flush()
     db.add(AuditLog(
         nutzer_id=nutzer_id,
         geraet_id=geraet.id,
         aktion=AktionType.ANGELEGT,
-        details=f"Gerät '{geraet.name}' angelegt.",
+        details=f"Gerät '{geraet.name}' (unique_name: {unique_name}) angelegt.",
     ))
     db.commit()
     db.refresh(geraet)

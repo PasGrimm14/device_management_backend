@@ -10,6 +10,7 @@ class Geraet(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     inventar_nummer = Column(String(50), unique=True, nullable=False, index=True)
     name = Column(String(100), nullable=False)
+    unique_name = Column(String(150), unique=True, nullable=True, index=True)
     kategorie = Column(String(50), index=True)
     hersteller = Column(String(50))
     modell = Column(String(50))

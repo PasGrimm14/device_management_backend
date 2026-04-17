@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -6,8 +8,11 @@ from app.models.audit_log import AuditLog
 from app.models.base import AktionType, BenutzerRolle, GeraeteStatus, ReservierungsStatus
 from app.models.benutzer import Benutzer
 from app.models.geraet import Geraet
-from app.models.reservierung import Reservierung
+from app.models.reservierung import Reservierung, RESERVIERUNG_ABLAUF_TAGE
 from app.schemas.reservierung import ReservierungCreate
+
+# Konfigurierbare Sekretariats-E-Mail – kann via .env gesetzt werden
+SEKRETARIAT_EMAIL = "sekretariat@dhbw-heilbronn.de"
 
 
 def get_all(db: Session, current_user: Benutzer, skip: int = 0, limit: int = 50) -> list[Reservierung]:
@@ -27,6 +32,7 @@ def create(db: Session, payload: ReservierungCreate, current_user: Benutzer) -> 
             detail=f"Gerät kann nicht reserviert werden (Status: {geraet.status.value}).",
         )
 
+    # Prüfen ob bereits eine aktive Reservierung für dieses Gerät an diesem Datum existiert
     existiert = (
         db.query(Reservierung)
         .filter(
@@ -42,10 +48,14 @@ def create(db: Session, payload: ReservierungCreate, current_user: Benutzer) -> 
             detail="Für dieses Gerät besteht an diesem Datum bereits eine aktive Reservierung.",
         )
 
+    now = datetime.now(timezone.utc)
+    ablaufdatum = now + timedelta(days=RESERVIERUNG_ABLAUF_TAGE)
+
     reservierung = Reservierung(
         geraet_id=payload.geraet_id,
         nutzer_id=current_user.id,
         reserviert_fuer_datum=payload.reserviert_fuer_datum,
+        ablaufdatum=ablaufdatum,
         status=ReservierungsStatus.AKTIV,
     )
     if geraet.status == GeraeteStatus.VERFUEGBAR:
@@ -57,24 +67,45 @@ def create(db: Session, payload: ReservierungCreate, current_user: Benutzer) -> 
         nutzer_id=current_user.id,
         geraet_id=geraet.id,
         aktion=AktionType.RESERVIERUNG,
-        details=f"Gerät '{geraet.name}' reserviert für {payload.reserviert_fuer_datum}.",
+        details=f"Gerät '{geraet.name}' reserviert für {payload.reserviert_fuer_datum} (Ablauf: {ablaufdatum.date()}).",
     ))
     db.commit()
     db.refresh(reservierung)
 
-    # --- Bestätigungs-Mail an den reservierenden Nutzer ---
+    # Bestätigungs-Mail an den Nutzer
     send_mail(
         to=current_user.email,
-        subject=f"DHBW-Geräteverwaltung: Reservierung bestätigt - {geraet.name}",
+        subject=f"DHBW-Geräteverwaltung: Reservierung bestätigt – {geraet.name}",
         body=(
             f"Hallo {current_user.name},\n\n"
             f"Ihre Reservierung wurde erfolgreich erfasst.\n\n"
             f"Gerät:             {geraet.name}\n"
             f"Inventarnummer:    {geraet.inventar_nummer}\n"
-            f"Reserviert für:    {payload.reserviert_fuer_datum.strftime('%d.%m.%Y')}\n\n"
-            f"Bitte holen Sie das Gerät rechtzeitig ab.\n"
-            f"Nicht abgeholte Reservierungen können storniert werden.\n\n"
+            f"Reserviert für:    {payload.reserviert_fuer_datum.strftime('%d.%m.%Y')}\n"
+            f"Automatischer Ablauf: {ablaufdatum.strftime('%d.%m.%Y')}\n\n"
+            f"Bitte holen Sie das Gerät rechtzeitig ab und scannen Sie den QR-Code, "
+            f"um die Ausleihe zu starten.\n"
+            f"Nicht abgeholte Reservierungen verfallen nach {RESERVIERUNG_ABLAUF_TAGE} Tagen automatisch.\n\n"
             f"Mit freundlichen Grüßen\n"
+            f"DHBW Heilbronn – Geräteverwaltung"
+        ),
+    )
+
+    # Benachrichtigung ans Sekretariat
+    send_mail(
+        to=SEKRETARIAT_EMAIL,
+        subject=f"Neue Reservierung: {geraet.name} – bitte vorbereiten",
+        body=(
+            f"Neue Gerätereservierung eingegangen:\n\n"
+            f"Gerät:             {geraet.name}\n"
+            f"Inventarnummer:    {geraet.inventar_nummer}\n"
+            f"Unique-Name:       {geraet.unique_name or '–'}\n"
+            f"Kategorie:         {geraet.kategorie or '–'}\n"
+            f"Reserviert von:    {current_user.name} ({current_user.email})\n"
+            f"Reserviert für:    {payload.reserviert_fuer_datum.strftime('%d.%m.%Y')}\n"
+            f"Automatischer Ablauf: {ablaufdatum.strftime('%d.%m.%Y')}\n\n"
+            f"Bitte bereiten Sie das Gerät für die Abholung vor.\n"
+            f"Die Ausleihe wird durch Scannen des QR-Codes am Gerät ausgelöst.\n\n"
             f"DHBW Heilbronn – Geräteverwaltung"
         ),
     )
@@ -110,3 +141,41 @@ def stornieren(db: Session, reservierung_id: int, current_user: Benutzer) -> Non
         geraet.status = GeraeteStatus.VERFUEGBAR
 
     db.commit()
+
+
+def ablauf_pruefen(db: Session) -> int:
+    """Setzt abgelaufene Reservierungen (> 3 Tage ohne Status-Änderung) auf STORNIERT
+    und gibt das Gerät wieder frei. Wird vom Scheduler aufgerufen.
+    Gibt die Anzahl der abgelaufenen Reservierungen zurück."""
+    now = datetime.now(timezone.utc)
+    abgelaufene = (
+        db.query(Reservierung)
+        .filter(
+            Reservierung.status == ReservierungsStatus.AKTIV,
+            Reservierung.ablaufdatum.isnot(None),
+            Reservierung.ablaufdatum < now,
+        )
+        .all()
+    )
+    if not abgelaufene:
+        return 0
+
+    for reservierung in abgelaufene:
+        reservierung.status = ReservierungsStatus.STORNIERT
+        geraet = db.get(Geraet, reservierung.geraet_id)
+        if geraet and geraet.status == GeraeteStatus.RESERVIERT:
+            # Prüfen ob noch andere aktive Reservierungen für dieses Gerät existieren
+            andere = (
+                db.query(Reservierung)
+                .filter(
+                    Reservierung.geraet_id == reservierung.geraet_id,
+                    Reservierung.id != reservierung.id,
+                    Reservierung.status == ReservierungsStatus.AKTIV,
+                )
+                .first()
+            )
+            if not andere:
+                geraet.status = GeraeteStatus.VERFUEGBAR
+
+    db.commit()
+    return len(abgelaufene)

@@ -41,6 +41,7 @@ class GeraetUpdate(BaseModel):
 class GeraetResponse(GeraetBase):
     """Die Antwortstruktur, die das Frontend erhält."""
     id: int
+    unique_name: Optional[str] = None
     bild_id: Optional[int] = None
     qr_code_url: str
 

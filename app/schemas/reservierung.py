@@ -9,9 +9,6 @@ from .geraet import GeraetResponse
 
 
 class ReservierungCreate(BaseModel):
-    """Payload, wenn ein Nutzer ein Gerät reserviert.
-    nutzer_id wird serverseitig aus dem Auth-Token ermittelt.
-    """
     geraet_id: int
     reserviert_fuer_datum: date
 
@@ -24,5 +21,6 @@ class ReservierungResponse(BaseModel):
     nutzer_id: int
     erstellt_am: datetime
     reserviert_fuer_datum: date
+    ablaufdatum: Optional[datetime] = None
     status: ReservierungsStatus
     geraet: Optional[GeraetResponse] = None
