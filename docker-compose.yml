@@ -60,6 +60,9 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       MINIO_BUCKET: ${MINIO_BUCKET:-geraete-bilder}
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      SMTP_FROM: geraete@dhbw-heilbronn.de
     depends_on:
       db:
         condition: service_healthy
@@ -68,6 +71,16 @@ services:
     networks:
       - default
       - proxy-network
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"   # Web-UI
+      - "1025:1025"   # SMTP
+    networks:
+      - default
+      - proxy-network
+
 
   phpmyadmin:
     image: phpmyadmin:latest

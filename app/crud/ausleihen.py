@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.mail import send_mail
 from app.models.audit_log import AuditLog
 from app.models.ausleihe import Ausleihe
 from app.models.base import AktionType, AusleihStatus, BenutzerRolle, GeraeteStatus, ReservierungsStatus
@@ -83,6 +84,25 @@ def create(db: Session, payload: AusleiheCreate, current_user: Benutzer) -> Ausl
     ))
     db.commit()
     db.refresh(ausleihe)
+
+    # --- Bestätigungs-Mail an den ausleihenden Nutzer ---
+    send_mail(
+        to=current_user.email,
+        subject=f"DHBW-Geräteverwaltung: Ausleihe bestätigt - {geraet.name}",
+        body=(
+            f"Hallo {current_user.name},\n\n"
+            f"Ihre Ausleihe wurde erfolgreich erfasst.\n\n"
+            f"Gerät:             {geraet.name}\n"
+            f"Inventarnummer:    {geraet.inventar_nummer}\n"
+            f"Ausgeliehen am:    {now.strftime('%d.%m.%Y')}\n"
+            f"Rückgabe bis:      {rueckgabe.strftime('%d.%m.%Y')}\n\n"
+            f"Bitte geben Sie das Gerät fristgerecht zurück.\n"
+            f"Bei Fragen wenden Sie sich an das DHBW-Team.\n\n"
+            f"Mit freundlichen Grüßen\n"
+            f"DHBW Heilbronn – Geräteverwaltung"
+        ),
+    )
+
     return ausleihe
 
 
