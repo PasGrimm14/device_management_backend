@@ -13,11 +13,6 @@ logger = logging.getLogger(__name__)
 
 
 def send_mail(to: str, subject: str, body: str) -> None:
-    """Sendet eine einfache Text-E-Mail an die angegebene Adresse.
-
-    Fehler beim Versand werden geloggt, aber nicht weitergeworfen, damit
-    ein fehlgeschlagener E-Mail-Versand den aufrufenden Job nicht abbricht.
-    """
     if not settings.SMTP_HOST:
         logger.info(
             "SMTP nicht konfiguriert – E-Mail wird nur geloggt. An: %s | Betreff: %s",
@@ -34,8 +29,9 @@ def send_mail(to: str, subject: str, body: str) -> None:
     try:
         with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as smtp:
             smtp.ehlo()
-            smtp.starttls()
-            smtp.ehlo()
+            if smtp.has_extn("STARTTLS"):      # TLS nur wenn der Server es anbietet
+                smtp.starttls()
+                smtp.ehlo()
             if settings.SMTP_USER and settings.SMTP_PASSWORD:
                 smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
             smtp.sendmail(msg["From"], [to], msg.as_string())

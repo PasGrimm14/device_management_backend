@@ -1,6 +1,7 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.mail import send_mail
 from app.models.audit_log import AuditLog
 from app.models.base import AktionType, BenutzerRolle, GeraeteStatus, ReservierungsStatus
 from app.models.benutzer import Benutzer
@@ -60,6 +61,24 @@ def create(db: Session, payload: ReservierungCreate, current_user: Benutzer) -> 
     ))
     db.commit()
     db.refresh(reservierung)
+
+    # --- Bestätigungs-Mail an den reservierenden Nutzer ---
+    send_mail(
+        to=current_user.email,
+        subject=f"DHBW-Geräteverwaltung: Reservierung bestätigt - {geraet.name}",
+        body=(
+            f"Hallo {current_user.name},\n\n"
+            f"Ihre Reservierung wurde erfolgreich erfasst.\n\n"
+            f"Gerät:             {geraet.name}\n"
+            f"Inventarnummer:    {geraet.inventar_nummer}\n"
+            f"Reserviert für:    {payload.reserviert_fuer_datum.strftime('%d.%m.%Y')}\n\n"
+            f"Bitte holen Sie das Gerät rechtzeitig ab.\n"
+            f"Nicht abgeholte Reservierungen können storniert werden.\n\n"
+            f"Mit freundlichen Grüßen\n"
+            f"DHBW Heilbronn – Geräteverwaltung"
+        ),
+    )
+
     return reservierung
 
 
