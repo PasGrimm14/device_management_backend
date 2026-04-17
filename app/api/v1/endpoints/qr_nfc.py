@@ -10,9 +10,11 @@ from fastapi.responses import StreamingResponse
 from PIL import Image, ImageDraw, ImageFont
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import get_current_user, get_db, require_admin
 from app.crud import ausleihen as crud_ausleihen
 from app.crud import geraete as crud
+from app.models.ausleihe import Ausleihe
+from app.models.base import AusleihStatus
 from app.models.benutzer import Benutzer
 from app.schemas.ausleihe import AusleiheCreate, AusleiheResponse
 from app.schemas.qr_nfc import NfcPayloadResponse, NfcResolveRequest, NfcResolveResponse
@@ -121,6 +123,42 @@ def scan_and_ausleihen(
     """
     payload = AusleiheCreate(geraet_id=geraet_id)
     return crud_ausleihen.create(db, payload, current_user)
+
+
+# ---------------------------------------------------------------------------
+# QR-Scan → Rückgabe triggern (nur Admin)
+# ---------------------------------------------------------------------------
+
+@geraet_router.post(
+    "/{geraet_id}/scan-rueckgabe",
+    response_model=AusleiheResponse,
+    summary="QR-Code scannen → Rückgabe durchführen (Admin)",
+)
+def scan_and_rueckgabe(
+    geraet_id: int,
+    db: Session = Depends(get_db),
+    admin: Benutzer = Depends(require_admin),
+) -> AusleiheResponse:
+    """Wird aufgerufen, wenn ein Admin den QR-Code eines ausgeliehenen Geräts scannt.
+
+    Sucht die aktive Ausleihe für dieses Gerät und führt die Rückgabe durch.
+    Nur für Administratoren zugänglich.
+    """
+    # Aktive Ausleihe für dieses Gerät finden
+    ausleihe = (
+        db.query(Ausleihe)
+        .filter(
+            Ausleihe.geraet_id == geraet_id,
+            Ausleihe.status.in_([AusleihStatus.AKTIV, AusleihStatus.UEBERFAELLIG]),
+        )
+        .first()
+    )
+    if ausleihe is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Keine aktive Ausleihe für dieses Gerät gefunden.",
+        )
+    return crud_ausleihen.rueckgabe(db, ausleihe.id, admin)
 
 
 # ---------------------------------------------------------------------------
