@@ -13,11 +13,13 @@ from app.api.v1.endpoints import (
     scheduler_admin,
     standorte,
     statistik,
+    sso,
 )
 
 api_router = APIRouter()
 
 api_router.include_router(auth.router,                      prefix="/auth",          tags=["Auth"])
+api_router.include_router(sso.router,                       prefix="/sso",           tags=["SSO"])
 api_router.include_router(geraete.router,                   prefix="/geraete",       tags=["Geräte"])
 api_router.include_router(qr_nfc.geraet_router,             prefix="/geraete",       tags=["QR & NFC"])
 api_router.include_router(qr_nfc.nfc_router,                prefix="/nfc",           tags=["QR & NFC"])
@@ -32,4 +34,4 @@ api_router.include_router(bilder.upload_router,             prefix="/admin/bilde
 api_router.include_router(bilder.admin_geraet_bild_router,  prefix="/admin/geraete", tags=["Bilder"])
 api_router.include_router(export.router,                    prefix="/export",        tags=["Export"])
 api_router.include_router(statistik.router,                 prefix="/statistik",     tags=["Statistik"])
-api_router.include_router(scheduler_admin.router,prefix="/admin/scheduler",tags=["Scheduler"])
+api_router.include_router(scheduler_admin.router,           prefix="/admin/scheduler", tags=["Scheduler"])
