@@ -2,7 +2,6 @@
 
 REST-API für ein Geräteverwaltungssystem — entwickelt mit **FastAPI**, **SQLAlchemy** und **MySQL**. Die Anwendung ermöglicht das Verwalten von Geräten, Ausleihen, Reservierungen und Benutzern, inklusive QR-Code-Generierung und Audit-Logging.
 
----
 
 ## Architektur
 
