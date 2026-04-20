@@ -13,6 +13,7 @@ from app.models.reservierung import Reservierung
 from app.schemas.ausleihe import AusleiheCreate
 
 VERLAENGERUNG_TAGE = 14
+VERLAENGERUNG_LANGZEIT_TAGE = 80
 MAX_VERLAENGERUNGEN = 2
 
 
@@ -85,7 +86,6 @@ def create(db: Session, payload: AusleiheCreate, current_user: Benutzer) -> Ausl
     db.commit()
     db.refresh(ausleihe)
 
-    # --- Bestätigungs-Mail an den ausleihenden Nutzer ---
     send_mail(
         to=current_user.email,
         subject=f"DHBW-Geräteverwaltung: Ausleihe bestätigt - {geraet.name}",
@@ -106,7 +106,18 @@ def create(db: Session, payload: AusleiheCreate, current_user: Benutzer) -> Ausl
     return ausleihe
 
 
-def verlaengern(db: Session, ausleihe_id: int, current_user: Benutzer) -> Ausleihe:
+def verlaengern(
+    db: Session,
+    ausleihe_id: int,
+    current_user: Benutzer,
+    langzeit: bool = False,
+) -> Ausleihe:
+    """Verlängert eine Ausleihe.
+
+    Bei langzeit=True und aktiviertem Langzeit-Flag am Gerät wird die Ausleihe
+    um 80 Tage verlängert (nur eine solche Verlängerung möglich).
+    Normale Verlängerungen: 14 Tage, max. 2×.
+    """
     ausleihe = get_by_id(db, ausleihe_id, current_user)
     if ausleihe.status not in (AusleihStatus.AKTIV, AusleihStatus.UEBERFAELLIG):
         raise HTTPException(
@@ -129,19 +140,39 @@ def verlaengern(db: Session, ausleihe_id: int, current_user: Benutzer) -> Auslei
             detail="Verlängerung nicht möglich – Gerät ist von einer anderen Person reserviert.",
         )
 
-    if ausleihe.verlaengerungen_anzahl >= MAX_VERLAENGERUNGEN:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Maximale Anzahl an Verlängerungen ({MAX_VERLAENGERUNGEN}) bereits erreicht.",
-        )
+    geraet = db.get(Geraet, ausleihe.geraet_id)
 
-    ausleihe.geplantes_rueckgabedatum += timedelta(days=VERLAENGERUNG_TAGE)
-    ausleihe.verlaengerungen_anzahl += 1
+    if langzeit:
+        # Langzeit-Verlängerung: nur wenn Admin-Flag gesetzt und noch nicht genutzt
+        if not geraet or not geraet.langzeit_ausleihe:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Langzeit-Verlängerung für dieses Gerät nicht freigeschaltet.",
+            )
+        if ausleihe.langzeit_verlaengerung_genutzt:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Die Langzeit-Verlängerung (80 Tage) wurde bereits genutzt.",
+            )
+        ausleihe.geplantes_rueckgabedatum += timedelta(days=VERLAENGERUNG_LANGZEIT_TAGE)
+        ausleihe.langzeit_verlaengerung_genutzt = True
+        ausleihe.verlaengerungen_anzahl += 1
+        tage = VERLAENGERUNG_LANGZEIT_TAGE
+    else:
+        if ausleihe.verlaengerungen_anzahl >= MAX_VERLAENGERUNGEN:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Maximale Anzahl an Verlängerungen ({MAX_VERLAENGERUNGEN}) bereits erreicht.",
+            )
+        ausleihe.geplantes_rueckgabedatum += timedelta(days=VERLAENGERUNG_TAGE)
+        ausleihe.verlaengerungen_anzahl += 1
+        tage = VERLAENGERUNG_TAGE
+
     db.add(AuditLog(
         nutzer_id=current_user.id,
         geraet_id=ausleihe.geraet_id,
         aktion=AktionType.VERLAENGERUNG,
-        details=f"Verlängerung #{ausleihe.verlaengerungen_anzahl}, "
+        details=f"Verlängerung #{ausleihe.verlaengerungen_anzahl} ({tage} Tage), "
                 f"neues Rückgabedatum: {ausleihe.geplantes_rueckgabedatum.date()}.",
     ))
     db.commit()

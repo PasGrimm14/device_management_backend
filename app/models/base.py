@@ -8,6 +8,7 @@ class GeraeteStatus(enum.Enum):
     RESERVIERT = "reserviert"
     DEFEKT = "defekt"
     AUSSER_BETRIEB = "außer Betrieb"
+    NICHT_VORHANDEN = "zur Zeit nicht vorhanden"
 
 class BenutzerRolle(enum.Enum):
     STANDARD = "Studierende_Mitarbeitende"

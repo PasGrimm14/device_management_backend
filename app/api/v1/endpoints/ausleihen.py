@@ -8,7 +8,7 @@ from app.crud import ausleihen as crud
 from app.models.ausleihe import Ausleihe
 from app.models.base import AusleihStatus
 from app.models.benutzer import Benutzer
-from app.schemas.ausleihe import AusleiheCreate, AusleiheResponse, AusleiheUeberfaelligResponse, RueckgabePayload
+from app.schemas.ausleihe import AusleiheCreate, AusleiheResponse, AusleiheUeberfaelligResponse, RueckgabePayload, VerlaengerungPayload
 
 router = APIRouter()
 
@@ -18,10 +18,6 @@ def list_ueberfaellige_ausleihen(
     db: Session = Depends(get_db),
     _: Benutzer = Depends(require_admin),
 ):
-    """Gibt alle überfälligen Ausleihen zurück, sortiert nach längster Überschreitung.
-
-    Nur für Administratoren zugänglich.
-    """
     ausleihen = (
         db.query(Ausleihe)
         .filter(Ausleihe.status == AusleihStatus.UEBERFAELLIG)
@@ -69,10 +65,11 @@ def create_ausleihe(
 @router.post("/{ausleihe_id}/verlaengern", response_model=AusleiheResponse)
 def verlaengern(
     ausleihe_id: int,
+    payload: VerlaengerungPayload = Body(default_factory=VerlaengerungPayload),
     db: Session = Depends(get_db),
     current_user: Benutzer = Depends(get_current_user),
 ):
-    return crud.verlaengern(db, ausleihe_id, current_user)
+    return crud.verlaengern(db, ausleihe_id, current_user, langzeit=payload.langzeit)
 
 
 @router.post("/{ausleihe_id}/rueckgabe", response_model=AusleiheResponse)

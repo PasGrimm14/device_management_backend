@@ -9,20 +9,19 @@ from .geraet import GeraetResponse
 
 
 class AusleiheCreate(BaseModel):
-    """Payload, wenn ein Nutzer auf 'Ausleihen' klickt.
-    nutzer_id wird serverseitig aus dem Auth-Token ermittelt.
-    """
+    """Payload, wenn ein Nutzer auf 'Ausleihen' klickt."""
     geraet_id: int
     geplantes_rueckgabedatum: Optional[datetime] = None
 
 
 class RueckgabePayload(BaseModel):
-    """Optionaler Body für den Rückgabe-Endpoint.
-
-    Ermöglicht die Erfassung von Schäden oder besonderen Zuständen
-    bei der Geräterückgabe.
-    """
+    """Optionaler Body für den Rückgabe-Endpoint."""
     zustand_bei_rueckgabe: Optional[str] = None
+
+
+class VerlaengerungPayload(BaseModel):
+    """Payload für die Verlängerung – optionale Langzeit-Option."""
+    langzeit: bool = False
 
 
 class AusleiheResponse(BaseModel):
@@ -37,12 +36,10 @@ class AusleiheResponse(BaseModel):
     status: AusleihStatus
     verlaengerungen_anzahl: int
     zustand_bei_rueckgabe: Optional[str] = None
+    langzeit_verlaengerung_genutzt: bool = False
     geraet: Optional[GeraetResponse] = None
 
 
 class AusleiheUeberfaelligResponse(AusleiheResponse):
-    """Erweitertes Antwortschema für überfällige Ausleihen.
-
-    Enthält zusätzlich die Anzahl der Tage, um die die Rückgabe überschritten ist.
-    """
+    """Erweitertes Antwortschema für überfällige Ausleihen."""
     ueberfaellig_seit_tagen: int

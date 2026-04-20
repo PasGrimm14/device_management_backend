@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, Integer, String, Date, Text, Enum
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Date, Text, Enum
 from sqlalchemy.orm import relationship
 
 from app.core.config import settings
@@ -20,6 +20,9 @@ class Geraet(Base):
     bemerkungen = Column(Text)
     bild_id = Column(Integer, ForeignKey("geraet_bilder.id"), nullable=True)
     box_id = Column(Integer, ForeignKey("boxen.id"), nullable=True)
+
+    # Erlaubt Langzeit-Ausleihe (bis zu 80 Tage Verlängerung)
+    langzeit_ausleihe = Column(Boolean, default=False, nullable=False, server_default='0')
 
     # Relationen
     bild = relationship("GeraetBild", back_populates="geraete")

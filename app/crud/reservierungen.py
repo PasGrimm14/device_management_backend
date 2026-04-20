@@ -5,13 +5,13 @@ from sqlalchemy.orm import Session
 
 from app.core.mail import send_mail
 from app.models.audit_log import AuditLog
-from app.models.base import AktionType, BenutzerRolle, GeraeteStatus, ReservierungsStatus
+from app.models.ausleihe import Ausleihe
+from app.models.base import AktionType, AusleihStatus, BenutzerRolle, GeraeteStatus, ReservierungsStatus
 from app.models.benutzer import Benutzer
 from app.models.geraet import Geraet
 from app.models.reservierung import Reservierung, RESERVIERUNG_ABLAUF_TAGE
 from app.schemas.reservierung import ReservierungCreate
 
-# Konfigurierbare Sekretariats-E-Mail – kann via .env gesetzt werden
 SEKRETARIAT_EMAIL = "sekretariat@dhbw-heilbronn.de"
 
 
@@ -26,7 +26,7 @@ def create(db: Session, payload: ReservierungCreate, current_user: Benutzer) -> 
     geraet = db.get(Geraet, payload.geraet_id)
     if geraet is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Gerät nicht gefunden.")
-    if geraet.status in (GeraeteStatus.DEFEKT, GeraeteStatus.AUSSER_BETRIEB):
+    if geraet.status in (GeraeteStatus.DEFEKT, GeraeteStatus.AUSSER_BETRIEB, GeraeteStatus.NICHT_VORHANDEN):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Gerät kann nicht reserviert werden (Status: {geraet.status.value}).",
@@ -46,6 +46,37 @@ def create(db: Session, payload: ReservierungCreate, current_user: Benutzer) -> 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Für dieses Gerät besteht an diesem Datum bereits eine aktive Reservierung.",
+        )
+
+    # Prüfen ob das Gerät an diesem Datum noch ausgeliehen ist (aktive Ausleihe mit Rückgabedatum nach Abholdatum)
+    # Das geplante Abholdatum als datetime am Tagesbeginn
+    abhol_datetime = datetime(
+        payload.reserviert_fuer_datum.year,
+        payload.reserviert_fuer_datum.month,
+        payload.reserviert_fuer_datum.day,
+        tzinfo=timezone.utc,
+    )
+    # Ende des Abholdatums (23:59 UTC)
+    abhol_datetime_end = abhol_datetime + timedelta(hours=23, minutes=59)
+
+    aktive_ausleihe_im_zeitraum = (
+        db.query(Ausleihe)
+        .filter(
+            Ausleihe.geraet_id == payload.geraet_id,
+            Ausleihe.status.in_([AusleihStatus.AKTIV, AusleihStatus.UEBERFAELLIG]),
+            # Ausleihe läuft noch am Abholtag: Rückgabedatum liegt NACH dem Beginn des Abholtags
+            Ausleihe.geplantes_rueckgabedatum > abhol_datetime,
+        )
+        .first()
+    )
+    if aktive_ausleihe_im_zeitraum:
+        rueckgabe_datum = aktive_ausleihe_im_zeitraum.geplantes_rueckgabedatum.strftime('%d.%m.%Y')
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Das Gerät ist voraussichtlich bis {rueckgabe_datum} ausgeliehen. "
+                f"Bitte wählen Sie ein späteres Abholdatum."
+            ),
         )
 
     now = datetime.now(timezone.utc)
@@ -72,17 +103,16 @@ def create(db: Session, payload: ReservierungCreate, current_user: Benutzer) -> 
     db.commit()
     db.refresh(reservierung)
 
-    # Bestätigungs-Mail an den Nutzer
     send_mail(
         to=current_user.email,
         subject=f"DHBW-Geräteverwaltung: Reservierung bestätigt – {geraet.name}",
         body=(
             f"Hallo {current_user.name},\n\n"
             f"Ihre Reservierung wurde erfolgreich erfasst.\n\n"
-            f"Gerät:             {geraet.name}\n"
-            f"Inventarnummer:    {geraet.inventar_nummer}\n"
-            f"Reserviert für:    {payload.reserviert_fuer_datum.strftime('%d.%m.%Y')}\n"
-            f"Automatischer Ablauf: {ablaufdatum.strftime('%d.%m.%Y')}\n\n"
+            f"Gerät:                    {geraet.name}\n"
+            f"Inventarnummer:           {geraet.inventar_nummer}\n"
+            f"Voraussichtliches Abholdatum: {payload.reserviert_fuer_datum.strftime('%d.%m.%Y')}\n"
+            f"Automatischer Ablauf:     {ablaufdatum.strftime('%d.%m.%Y')}\n\n"
             f"Bitte holen Sie das Gerät rechtzeitig ab und scannen Sie den QR-Code, "
             f"um die Ausleihe zu starten.\n"
             f"Nicht abgeholte Reservierungen verfallen nach {RESERVIERUNG_ABLAUF_TAGE} Tagen automatisch.\n\n"
@@ -91,19 +121,18 @@ def create(db: Session, payload: ReservierungCreate, current_user: Benutzer) -> 
         ),
     )
 
-    # Benachrichtigung ans Sekretariat
     send_mail(
         to=SEKRETARIAT_EMAIL,
         subject=f"Neue Reservierung: {geraet.name} – bitte vorbereiten",
         body=(
             f"Neue Gerätereservierung eingegangen:\n\n"
-            f"Gerät:             {geraet.name}\n"
-            f"Inventarnummer:    {geraet.inventar_nummer}\n"
-            f"Unique-Name:       {geraet.unique_name or '–'}\n"
-            f"Kategorie:         {geraet.kategorie or '–'}\n"
-            f"Reserviert von:    {current_user.name} ({current_user.email})\n"
-            f"Reserviert für:    {payload.reserviert_fuer_datum.strftime('%d.%m.%Y')}\n"
-            f"Automatischer Ablauf: {ablaufdatum.strftime('%d.%m.%Y')}\n\n"
+            f"Gerät:                    {geraet.name}\n"
+            f"Inventarnummer:           {geraet.inventar_nummer}\n"
+            f"Unique-Name:              {geraet.unique_name or '–'}\n"
+            f"Kategorie:                {geraet.kategorie or '–'}\n"
+            f"Reserviert von:           {current_user.name} ({current_user.email})\n"
+            f"Voraussichtliches Abholdatum: {payload.reserviert_fuer_datum.strftime('%d.%m.%Y')}\n"
+            f"Automatischer Ablauf:     {ablaufdatum.strftime('%d.%m.%Y')}\n\n"
             f"Bitte bereiten Sie das Gerät für die Abholung vor.\n"
             f"Die Ausleihe wird durch Scannen des QR-Codes am Gerät ausgelöst.\n\n"
             f"DHBW Heilbronn – Geräteverwaltung"
@@ -144,9 +173,7 @@ def stornieren(db: Session, reservierung_id: int, current_user: Benutzer) -> Non
 
 
 def ablauf_pruefen(db: Session) -> int:
-    """Setzt abgelaufene Reservierungen (> 3 Tage ohne Status-Änderung) auf STORNIERT
-    und gibt das Gerät wieder frei. Wird vom Scheduler aufgerufen.
-    Gibt die Anzahl der abgelaufenen Reservierungen zurück."""
+    """Setzt abgelaufene Reservierungen auf STORNIERT und gibt das Gerät frei."""
     now = datetime.now(timezone.utc)
     abgelaufene = (
         db.query(Reservierung)
@@ -164,7 +191,6 @@ def ablauf_pruefen(db: Session) -> int:
         reservierung.status = ReservierungsStatus.STORNIERT
         geraet = db.get(Geraet, reservierung.geraet_id)
         if geraet and geraet.status == GeraeteStatus.RESERVIERT:
-            # Prüfen ob noch andere aktive Reservierungen für dieses Gerät existieren
             andere = (
                 db.query(Reservierung)
                 .filter(

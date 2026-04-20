@@ -24,6 +24,9 @@ class Ausleihe(Base):
     # Zustandsbeschreibung bei Rückgabe (optional)
     zustand_bei_rueckgabe = Column(Text, nullable=True)
 
+    # Langzeit-Verlängerung (80 Tage) wurde bereits genutzt
+    langzeit_verlaengerung_genutzt = Column(Boolean, default=False, nullable=False, server_default='0')
+
     # Relationen
     geraet = relationship("Geraet", back_populates="ausleihen")
     nutzer = relationship("Benutzer", back_populates="ausleihen")

@@ -18,6 +18,7 @@ class GeraetBase(BaseModel):
     status: GeraeteStatus = GeraeteStatus.VERFUEGBAR
     anschaffungsdatum: Optional[date] = None
     bemerkungen: Optional[str] = None
+    langzeit_ausleihe: bool = False
 
 
 class GeraetCreate(GeraetBase):
@@ -36,6 +37,7 @@ class GeraetUpdate(BaseModel):
     box_id: Optional[int] = None
     status: Optional[GeraeteStatus] = None
     bemerkungen: Optional[str] = None
+    langzeit_ausleihe: Optional[bool] = None
 
 
 class GeraetResponse(GeraetBase):
@@ -44,5 +46,6 @@ class GeraetResponse(GeraetBase):
     unique_name: Optional[str] = None
     bild_id: Optional[int] = None
     qr_code_url: str
+    langzeit_ausleihe: bool = False
 
     model_config = ConfigDict(from_attributes=True)
