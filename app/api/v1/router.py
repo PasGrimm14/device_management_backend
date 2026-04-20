@@ -31,8 +31,4 @@ api_router.include_router(bilder.upload_router,             prefix="/admin/bilde
 api_router.include_router(bilder.admin_geraet_bild_router,  prefix="/admin/geraete", tags=["Bilder"])
 api_router.include_router(export.router,                    prefix="/export",        tags=["Export"])
 api_router.include_router(statistik.router,                 prefix="/statistik",     tags=["Statistik"])
-api_router.include_router(
-    scheduler_admin.router,
-    prefix="/admin/scheduler",
-    tags=["Scheduler"]
-)
+api_router.include_router(scheduler_admin.router,prefix="/admin/scheduler",tags=["Scheduler"])
