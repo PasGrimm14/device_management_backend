@@ -10,6 +10,7 @@ from app.api.v1.endpoints import (
     geraete,
     qr_nfc,
     reservierungen,
+    scheduler_admin,
     standorte,
     statistik,
 )
