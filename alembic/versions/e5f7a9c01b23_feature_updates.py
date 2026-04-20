@@ -16,18 +16,16 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-
 revision: str = 'e5f7a9c01b23'
 down_revision: Union[str, None] = 'd4e6f8b90c13'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-
 def upgrade() -> None:
-    # 1. GeraeteStatus ENUM um neuen Wert erweitern (MySQL: MODIFY COLUMN)
+    # 1. GeraeteStatus ENUM um neuen Wert erweitern (mit den richtigen Enum-Keys!)
     op.execute(
         "ALTER TABLE geraete MODIFY COLUMN status ENUM("
-        "'verfügbar','ausgeliehen','reserviert','defekt','außer Betrieb','zur Zeit nicht vorhanden'"
+        "'VERFUEGBAR','AUSGELIEHEN','RESERVIERT','DEFEKT','AUSSER_BETRIEB','NICHT_VORHANDEN'"
         ") NOT NULL"
     )
 
@@ -43,7 +41,6 @@ def upgrade() -> None:
         sa.Column('langzeit_verlaengerung_genutzt', sa.Boolean(), nullable=False, server_default=sa.false()),
     )
 
-
 def downgrade() -> None:
     op.drop_column('ausleihen', 'langzeit_verlaengerung_genutzt')
     op.drop_column('geraete', 'langzeit_ausleihe')
@@ -51,6 +48,6 @@ def downgrade() -> None:
     # Alten ENUM ohne den neuen Wert wiederherstellen
     op.execute(
         "ALTER TABLE geraete MODIFY COLUMN status ENUM("
-        "'verfügbar','ausgeliehen','reserviert','defekt','außer Betrieb'"
+        "'VERFUEGBAR','AUSGELIEHEN','RESERVIERT','DEFEKT','AUSSER_BETRIEB'"
         ") NOT NULL"
     )
