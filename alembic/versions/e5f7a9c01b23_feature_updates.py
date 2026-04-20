@@ -4,17 +4,17 @@ Revision ID: e5f7a9c01b23
 Revises: d4e6f8b90c13
 Create Date: 2026-04-20 00:00:00.000000
 
-Änderungen:
+Aenderungen:
 - geraete: Spalte `langzeit_ausleihe` (Boolean, default False)
-- geraete: Status 'zur Zeit nicht vorhanden' hinzugefügt
+- geraete: Status 'zur Zeit nicht vorhanden' hinzugefuegt
 - ausleihen: Spalte `langzeit_verlaengerung_genutzt` (Boolean, default False)
 
-Strategie für ENUM-Erweiterung mit Umlauten (MySQL DataError 1265):
-  MySQL kann bestehende Umlaut-Werte beim MODIFY COLUMN nicht zuordnen,
-  wenn der interne Charset der Verbindung nicht passt.
-  Lösung: Spalte temporär auf VARCHAR(50) ändern (keine Wert-Validierung),
-  dann auf den neuen ENUM zurücksetzen. Bestehende Werte bleiben dabei
-  exakt erhalten, da VARCHAR alle Strings akzeptiert.
+Strategie fuer ENUM-Erweiterung mit Umlauten (MySQL DataError 1265):
+  Bestehende Werte mit Umlauten werden ZUERST in reine ASCII-Platzhalter
+  umgeschrieben (z.B. 'verfuegbar_tmp', 'ausser_betrieb_tmp').
+  Dann: ENUM -> VARCHAR -> neuer ENUM nur mit ASCII-Werten ->
+  UPDATE zurueck auf echte Umlaut-Werte -> finaler ENUM mit Umlauten.
+  MySQL muss so nie Umlaut-Datenbankwerte gegen Umlaut-SQL-Strings matchen.
 """
 from typing import Sequence, Union
 
@@ -28,54 +28,54 @@ down_revision: Union[str, None] = 'd4e6f8b90c13'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+# Umlaut-Werte als Python unicode escapes (werden zu echten Zeichen kompiliert)
+VERFUEGBAR   = 'verf\u00fcgbar'       # verfügbar
+AUSSER       = 'au\u00dfer Betrieb'   # außer Betrieb
+NICHT_VORH   = 'zur Zeit nicht vorhanden'
+
+# ASCII-Platzhalter
+TMP_VERF     = 'verfuegbar_tmp'
+TMP_AUSSER   = 'ausser_betrieb_tmp'
+
 
 def upgrade() -> None:
     conn = op.get_bind()
 
-    # Schritt 1: status → VARCHAR(50)
-    # VARCHAR hat keine Wert-Einschränkung → bestehende Umlaut-Werte bleiben erhalten
+    # 1. Bestehende Umlaut-Werte -> ASCII-Platzhalter
+    #    UPDATE vergleicht Byte-fuer-Byte wie gespeichert -> kein Charset-Problem
+    conn.execute(text(f"UPDATE geraete SET status = '{TMP_VERF}'   WHERE status = '{VERFUEGBAR}'"))
+    conn.execute(text(f"UPDATE geraete SET status = '{TMP_AUSSER}' WHERE status = '{AUSSER}'"))
+
+    # 2. ENUM -> VARCHAR (kein Wert-Check)
     conn.execute(text(
-        "ALTER TABLE geraete "
-        "MODIFY COLUMN status VARCHAR(50) "
-        "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL"
+        "ALTER TABLE geraete MODIFY COLUMN status "
+        "VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL"
     ))
 
-    # Schritt 2: VARCHAR → erweiterter ENUM (jetzt ohne Konflikt, da Werte bereits korrekt gespeichert)
+    # 3. VARCHAR -> ENUM nur mit ASCII-Werten (kein Umlaut-Matching noetig)
     conn.execute(text(
-        "ALTER TABLE geraete "
-        "MODIFY COLUMN status "
-        "ENUM("
-            "'verf\u00fcgbar',"        # verfügbar
-            "'ausgeliehen',"
-            "'reserviert',"
-            "'defekt',"
-            "'au\u00dfer Betrieb',"    # außer Betrieb
-            "'zur Zeit nicht vorhanden'"
-        ") "
-        "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL"
+        f"ALTER TABLE geraete MODIFY COLUMN status "
+        f"ENUM('{TMP_VERF}','ausgeliehen','reserviert','defekt','{TMP_AUSSER}','{NICHT_VORH}') "
+        f"CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL"
     ))
 
-    # Langzeit-Flag für Geräte
-    op.add_column(
-        'geraete',
-        sa.Column(
-            'langzeit_ausleihe',
-            sa.Boolean(),
-            nullable=False,
-            server_default=sa.false(),
-        ),
-    )
+    # 4. ASCII-Platzhalter -> echte Umlaut-Werte
+    conn.execute(text(f"UPDATE geraete SET status = '{VERFUEGBAR}' WHERE status = '{TMP_VERF}'"))
+    conn.execute(text(f"UPDATE geraete SET status = '{AUSSER}'     WHERE status = '{TMP_AUSSER}'"))
 
-    # Langzeit-Verlängerung-Flag für Ausleihen
-    op.add_column(
-        'ausleihen',
-        sa.Column(
-            'langzeit_verlaengerung_genutzt',
-            sa.Boolean(),
-            nullable=False,
-            server_default=sa.false(),
-        ),
-    )
+    # 5. ENUM -> finaler ENUM mit echten Umlauten
+    #    Jetzt stimmen DB-Werte und SQL-Strings exakt ueberein (beide utf8mb4)
+    conn.execute(text(
+        f"ALTER TABLE geraete MODIFY COLUMN status "
+        f"ENUM('{VERFUEGBAR}','ausgeliehen','reserviert','defekt','{AUSSER}','{NICHT_VORH}') "
+        f"CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL"
+    ))
+
+    # 6. Neue Boolean-Spalten
+    op.add_column('geraete',
+        sa.Column('langzeit_ausleihe', sa.Boolean(), nullable=False, server_default=sa.false()))
+    op.add_column('ausleihen',
+        sa.Column('langzeit_verlaengerung_genutzt', sa.Boolean(), nullable=False, server_default=sa.false()))
 
 
 def downgrade() -> None:
@@ -84,29 +84,32 @@ def downgrade() -> None:
     op.drop_column('ausleihen', 'langzeit_verlaengerung_genutzt')
     op.drop_column('geraete', 'langzeit_ausleihe')
 
-    # Schritt 1: status → VARCHAR (damit der neue Wert keine Fehler wirft)
+    # Neuen Status auf verfuegbar zuruecksetzen
+    conn.execute(text(f"UPDATE geraete SET status = '{TMP_VERF}' WHERE status = '{NICHT_VORH}'"))
+    # Umlaute -> Platzhalter
+    conn.execute(text(f"UPDATE geraete SET status = '{TMP_VERF}'   WHERE status = '{VERFUEGBAR}'"))
+    conn.execute(text(f"UPDATE geraete SET status = '{TMP_AUSSER}' WHERE status = '{AUSSER}'"))
+
+    # ENUM -> VARCHAR
     conn.execute(text(
-        "ALTER TABLE geraete "
-        "MODIFY COLUMN status VARCHAR(50) "
-        "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL"
+        "ALTER TABLE geraete MODIFY COLUMN status "
+        "VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL"
     ))
 
-    # Schritt 2: alten ENUM ohne 'zur Zeit nicht vorhanden' wiederherstellen
-    # Achtung: Zeilen mit diesem Wert würden abgeschnitten – daher zuerst bereinigen
+    # VARCHAR -> alter ENUM (nur ASCII-Platzhalter)
     conn.execute(text(
-        "UPDATE geraete SET status = 'verf\u00fcgbar' "
-        "WHERE status = 'zur Zeit nicht vorhanden'"
+        f"ALTER TABLE geraete MODIFY COLUMN status "
+        f"ENUM('{TMP_VERF}','ausgeliehen','reserviert','defekt','{TMP_AUSSER}') "
+        f"CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL"
     ))
 
+    # Platzhalter -> echte Umlaut-Werte
+    conn.execute(text(f"UPDATE geraete SET status = '{VERFUEGBAR}' WHERE status = '{TMP_VERF}'"))
+    conn.execute(text(f"UPDATE geraete SET status = '{AUSSER}'     WHERE status = '{TMP_AUSSER}'"))
+
+    # Finaler alter ENUM mit Umlauten
     conn.execute(text(
-        "ALTER TABLE geraete "
-        "MODIFY COLUMN status "
-        "ENUM("
-            "'verf\u00fcgbar',"
-            "'ausgeliehen',"
-            "'reserviert',"
-            "'defekt',"
-            "'au\u00dfer Betrieb'"
-        ") "
-        "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL"
+        f"ALTER TABLE geraete MODIFY COLUMN status "
+        f"ENUM('{VERFUEGBAR}','ausgeliehen','reserviert','defekt','{AUSSER}') "
+        f"CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL"
     ))
