@@ -1,6 +1,6 @@
 # Device Management Backend
 
-REST-API für ein Geräteverwaltungssystem — entwickelt mit **FastAPI**, **SQLAlchemy** und **MySQL**. Die Anwendung ermöglicht das Verwalten von Geräten, Ausleihen, Reservierungen und Benutzern, inklusive QR-Code-Generierung und Audit-Logging.
+REST-API für ein Geräteverwaltungssystem — entwickelt mit **FastAPI**, **SQLAlchemy** und **MySQL**. Die Anwendung ermöglicht das Verwalten von Geräten, Ausleihen, Reservierungen und Benutzern, inklusive QR-Code- und NFC-Unterstützung, Bildspeicherung via MinIO sowie Audit-Logging.
 
 
 ## Architektur
@@ -21,6 +21,7 @@ REST-API für ein Geräteverwaltungssystem — entwickelt mit **FastAPI**, **SQL
 | Scheduler     | APScheduler                  |
 | QR-Codes      | qrcode + Pillow              |
 | Bildspeicher  | MinIO (S3-kompatibel)        |
+| E-Mail        | SMTP (Mailpit im Dev-Betrieb)|
 | Monitoring    | Sentry (optional)            |
 | Server        | Uvicorn                      |
 | Container     | Docker + Docker Compose      |
@@ -33,13 +34,16 @@ REST-API für ein Geräteverwaltungssystem — entwickelt mit **FastAPI**, **SQL
 device_management_backend/
 ├── app/
 │   ├── api/
+│   │   ├── deps.py             # Auth + DB Dependency Injection
 │   │   └── v1/
 │   │       ├── endpoints/      # Route-Handler (auth, geraete, ausleihen, …)
 │   │       └── router.py
 │   ├── core/
 │   │   ├── config.py           # Einstellungen via Pydantic Settings
-│   │   ├── scheduler.py        # Hintergrund-Jobs (z. B. überfällige Ausleihen)
-│   │   └── security.py         # JWT-Erstellung & Passwort-Hashing
+│   │   ├── mail.py             # SMTP E-Mail-Versand
+│   │   ├── minio_client.py     # MinIO-Client-Factory
+│   │   ├── scheduler.py        # Hintergrund-Jobs
+│   │   └── security.py         # JWT-Erstellung & Dekodierung
 │   ├── crud/                   # Datenbankoperationen
 │   ├── db/                     # Session & Base-Klasse
 │   ├── models/                 # SQLAlchemy-Modelle
@@ -57,16 +61,27 @@ device_management_backend/
 
 ## API-Endpunkte (`/api/v1`)
 
-| Prefix                  | Tag             | Beschreibung                                      |
-|-------------------------|-----------------|---------------------------------------------------|
-| `/auth`                 | Auth            | Login, Token-Vergabe                              |
-| `/geraete`              | Geräte          | CRUD-Operationen, QR-Code, Bild-URL               |
-| `/ausleihen`            | Ausleihen       | Ausleihe starten, verlängern, zurückgeben         |
-| `/reservierungen`       | Reservierungen  | Reservierungen anlegen & verwalten                |
-| `/benutzer`             | Benutzer        | Benutzerverwaltung                                |
-| `/audit-logs`           | Audit-Logs      | Nachvollziehbare Aktionshistorie                  |
-| `/admin/bilder`         | Bilder          | Bild hochladen (Admin)                            |
-| `/admin/geraete`        | Bilder          | Bild einem Gerät zuweisen (Admin)                 |
+| Prefix                        | Tag             | Beschreibung                                          |
+|-------------------------------|-----------------|-------------------------------------------------------|
+| `/auth`                       | Auth            | Login, Token-Vergabe, aktueller Nutzer                |
+| `/geraete`                    | Geräte          | CRUD-Operationen, QR-Code, Bild-URL                   |
+| `/geraete/{id}/qr-code`       | QR & NFC        | QR-Code generieren (PNG mit Beschriftung oder SVG)    |
+| `/geraete/{id}/nfc-payload`   | QR & NFC        | NFC NDEF-Payload abrufen                              |
+| `/geraete/{id}/scan-ausleihe` | QR & NFC        | QR-Scan → Ausleihe direkt starten                     |
+| `/geraete/{id}/scan-rueckgabe`| QR & NFC        | QR-Scan → Rückgabe durchführen (Admin)                |
+| `/nfc/resolve`                | QR & NFC        | NFC-URL zu Gerätedaten auflösen                       |
+| `/bildungseinrichtungen`      | Standorte       | CRUD für Bildungseinrichtungen                        |
+| `/standorte`                  | Standorte       | CRUD für Standorte                                    |
+| `/boxen`                      | Standorte       | CRUD für Boxen (Aufbewahrungseinheiten)               |
+| `/ausleihen`                  | Ausleihen       | Ausleihe starten, verlängern, zurückgeben             |
+| `/reservierungen`             | Reservierungen  | Reservierungen anlegen & stornieren                   |
+| `/benutzer`                   | Benutzer        | Benutzerverwaltung                                    |
+| `/audit-logs`                 | Audit-Logs      | Nachvollziehbare Aktionshistorie                      |
+| `/admin/bilder`               | Bilder          | Bild hochladen (Admin)                                |
+| `/admin/geraete`              | Bilder          | Bild einem Gerät zuweisen (Admin)                     |
+| `/export/ausleihen`           | Export          | Ausleihdaten als CSV exportieren (Admin)              |
+| `/statistik`                  | Statistik       | Aggregierte Systemkennzahlen (Admin)                  |
+| `/admin/scheduler`            | Scheduler       | Scheduler-Jobs manuell auslösen (Admin)               |
 
 ### Bild-Endpunkte im Detail
 
@@ -76,7 +91,7 @@ device_management_backend/
 | `PUT`   | `/api/v1/admin/geraete/{id}/bild`     | Admin        | Vorhandenes Bild einem Gerät zuweisen     |
 | `GET`   | `/api/v1/geraete/{id}/bild`           | Alle         | Presigned-URL (1 h) für das Gerätebild   |
 
-Die interaktive API-Dokumentation ist unter `/api/v1/openapi.json` (Swagger UI: `/docs`, Redoc: `/redoc`) erreichbar.
+Die interaktive API-Dokumentation ist unter `/api/v1/openapi.json` erreichbar (Swagger UI: `/docs`, Redoc: `/redoc`).
 
 ---
 
@@ -93,6 +108,14 @@ Die interaktive API-Dokumentation ist unter `/api/v1/openapi.json` (Swagger UI: 
 
 ### Reservierungs-Status
 `aktiv` · `erfüllt` · `storniert`
+
+### Standort-Hierarchie
+
+Geräte werden über eine dreigliedrige Standorthierarchie verortet:
+
+```
+Bildungseinrichtung  →  Standort (Gebäude/Raum)  →  Box  →  Gerät
+```
 
 ---
 
@@ -131,13 +154,21 @@ DB_NAME=device_management
 SECRET_KEY=dein_geheimer_schluessel
 
 CORS_ORIGINS=["http://localhost:3000","http://localhost:5173"]
-BASE_URL=http://localhost:8000
+BASE_URL=http://localhost:8050
 
 # MinIO
 MINIO_ENDPOINT=localhost:9000
+MINIO_PUBLIC_ENDPOINT=localhost:9000
 MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
 MINIO_BUCKET=geraete-bilder
+
+# SMTP (optional – wenn leer, werden E-Mails nur geloggt)
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASSWORD=
+SMTP_FROM=
 
 # Optional
 SENTRY_DSN=
@@ -147,7 +178,7 @@ SENTRY_DSN=
 
 ```bash
 alembic upgrade head
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn app.main:app --host 0.0.0.0 --port 8050 --reload
 ```
 
 > Für lokale MinIO-Entwicklung kann ein MinIO-Server per Docker gestartet werden:
@@ -163,16 +194,17 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 ## Docker-Deployment
 
-Das `docker-compose.yml` startet vier Services:
+Das `docker-compose.yml` startet fünf Services:
 
-| Service       | Beschreibung                          | Port (Host) |
-|---------------|---------------------------------------|-------------|
-| `db`          | MySQL 8.0                             | `3307`      |
-| `minio`       | Objektspeicher für Gerätebilder       | intern      |
-| `app`         | FastAPI-Anwendung                     | intern      |
-| `phpmyadmin`  | Datenbank-Verwaltungsoberfläche       | intern      |
+| Service       | Beschreibung                          | Port (Host)         |
+|---------------|---------------------------------------|---------------------|
+| `db`          | MySQL 8.0                             | `3307`              |
+| `minio`       | Objektspeicher für Gerätebilder       | `9002` (API), `9003` (Konsole) |
+| `app`         | FastAPI-Anwendung                     | intern              |
+| `mailpit`     | E-Mail-Testserver (Dev)               | `8025` (UI), `1025` (SMTP) |
+| `phpmyadmin`  | Datenbank-Verwaltungsoberfläche       | intern              |
 
-`app`, `minio` und `phpmyadmin` sind bewusst **ohne externe Ports** konfiguriert — der Zugriff erfolgt über einen vorgelagerten Reverse Proxy.
+`app` und `phpmyadmin` sind bewusst **ohne externe Ports** konfiguriert — der Zugriff erfolgt über einen vorgelagerten Reverse Proxy.
 
 ### Starten
 
@@ -191,14 +223,52 @@ Der Container führt beim Start automatisch `alembic upgrade head` aus, bevor Uv
 Die API verwendet **JWT Bearer Tokens** (HS256, Standard-Gültigkeit: 60 Minuten).
 
 ```
-POST /api/v1/auth/login
+POST /api/v1/auth/token
 → { "access_token": "...", "token_type": "bearer" }
 ```
 
-Das Token wird als `Authorization: Bearer <token>` Header bei geschützten Endpunkten mitgegeben. Benutzer werden über eine `shibboleth_id` identifiziert.
+Das Token wird als `Authorization: Bearer <token>` Header bei geschützten Endpunkten mitgegeben. Benutzer werden über eine `shibboleth_id` identifiziert. Der lokale Test-Login-Endpoint ist in der Produktionsumgebung (`ENV=production`) deaktiviert.
 
 ---
 
 ## Hintergrund-Jobs
 
-APScheduler läuft als Teil des FastAPI-Lifespan-Kontexts und prüft z. B. automatisch, ob aktive Ausleihen überfällig sind, und aktualisiert deren Status entsprechend.
+APScheduler läuft als Teil des FastAPI-Lifespan-Kontexts und führt folgende Jobs automatisch aus:
+
+| Job                              | Zeitplan (UTC) | Beschreibung                                                     |
+|----------------------------------|----------------|------------------------------------------------------------------|
+| `mark_ueberfaellige_ausleihen`   | 01:00 täglich  | Setzt aktive Ausleihen mit überschrittenem Rückgabedatum auf `überfällig` |
+| `ablauf_reservierungen_pruefen`  | 01:15 täglich  | Storniert Reservierungen, deren Ablaufdatum überschritten ist (Standard: 3 Tage) |
+| `send_erinnerungen`              | 08:00 täglich  | Sendet Frist-Erinnerungen für Ausleihen, die morgen oder übermorgen fällig sind |
+| `send_mahnungen`                 | 08:00 täglich  | Sendet Mahnungen für überfällige Ausleihen (einmalig)            |
+
+Alle Jobs können auch manuell über `/api/v1/admin/scheduler` ausgelöst werden (Admin-Berechtigung erforderlich).
+
+---
+
+## E-Mail-Benachrichtigungen
+
+Das System versendet automatisch E-Mails in folgenden Situationen:
+
+- **Ausleihe bestätigt** – an den ausleihenden Nutzer
+- **Reservierung bestätigt** – an den Nutzer sowie eine Benachrichtigung ans Sekretariat
+- **Frist-Erinnerung** – 1–2 Tage vor dem geplanten Rückgabedatum
+- **Mahnung** – bei überfälligen Ausleihen
+
+Wenn `SMTP_HOST` nicht gesetzt ist, werden E-Mails nur geloggt und nicht versendet. Im Docker-Betrieb ist **Mailpit** als lokaler SMTP-Testserver eingebunden, der alle ausgehenden E-Mails abfängt und unter `http://localhost:8025` anzeigt.
+
+---
+
+## Geräteverwaltung
+
+### Unique Name
+
+Beim Anlegen eines Geräts wird automatisch ein eindeutiger Anzeigename im Format `{Kategorie}-{Hersteller}-{Nummer}` generiert (z. B. `Laptop-Apple-1000`). Dieser Name wird auch auf dem QR-Code-Ausdruck eingeblendet.
+
+### QR-Code & NFC
+
+Jedes Gerät besitzt eine eindeutige URL (`BASE_URL/geraete/{id}`), die sowohl als QR-Code (PNG mit Beschriftung oder SVG) als auch als NFC NDEF-URI-Record bereitgestellt wird. Das Scannen des QR-Codes löst direkt eine Ausleihe aus — ohne weiteren Klick in der UI.
+
+### Gerätebilder
+
+Bilder werden in **MinIO** (S3-kompatibel) gespeichert. Der Abruf erfolgt über zeitlich begrenzte Presigned-URLs (Gültigkeit: 1 Stunde). Erlaubte Formate: JPEG, PNG, WebP · Maximale Dateigröße: 5 MB.
