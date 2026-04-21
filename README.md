@@ -64,6 +64,7 @@ device_management_backend/
 | Prefix                        | Tag             | Beschreibung                                          |
 |-------------------------------|-----------------|-------------------------------------------------------|
 | `/auth`                       | Auth            | Login, Token-Vergabe, aktueller Nutzer                |
+| `/sso`                        | SSO             | SSO-Callback: OTT gegen JWT tauschen (Shibboleth)     |
 | `/geraete`                    | Geräte          | CRUD-Operationen, QR-Code, Bild-URL                   |
 | `/geraete/{id}/qr-code`       | QR & NFC        | QR-Code generieren (PNG mit Beschriftung oder SVG)    |
 | `/geraete/{id}/nfc-payload`   | QR & NFC        | NFC NDEF-Payload abrufen                              |
@@ -97,18 +98,6 @@ Die interaktive API-Dokumentation ist unter `/api/v1/openapi.json` erreichbar (S
 
 ## Datenmodell
 
-### Geräte-Status
-`verfügbar` · `ausgeliehen` · `reserviert` · `defekt` · `außer Betrieb`
-
-### Benutzer-Rollen
-`Studierende_Mitarbeitende` · `Administrator`
-
-### Ausleihe-Status
-`aktiv` · `überfällig` · `abgeschlossen`
-
-### Reservierungs-Status
-`aktiv` · `erfüllt` · `storniert`
-
 ### Standort-Hierarchie
 
 Geräte werden über eine dreigliedrige Standorthierarchie verortet:
@@ -116,6 +105,129 @@ Geräte werden über eine dreigliedrige Standorthierarchie verortet:
 ```
 Bildungseinrichtung  →  Standort (Gebäude/Raum)  →  Box  →  Gerät
 ```
+
+---
+
+### Datenbanktabellen
+
+#### `bildungseinrichtungen`
+
+| Spalte          | Typ           | Constraints       | Beschreibung              |
+|-----------------|---------------|-------------------|---------------------------|
+| `id`            | INT           | PK, AUTO_INCREMENT| Primärschlüssel           |
+| `name`          | VARCHAR(255)  | NOT NULL          | Name der Einrichtung      |
+| `strasse`       | VARCHAR(255)  |                   | Straße                    |
+| `hausnummer`    | VARCHAR(20)   |                   | Hausnummer                |
+| `plz`           | VARCHAR(10)   |                   | Postleitzahl              |
+| `ort`           | VARCHAR(255)  |                   | Ort                       |
+| `bundesland`    | VARCHAR(255)  |                   | Bundesland                |
+
+#### `standorte`
+
+| Spalte                    | Typ          | Constraints               | Beschreibung                        |
+|---------------------------|--------------|---------------------------|-------------------------------------|
+| `id`                      | INT          | PK, AUTO_INCREMENT        | Primärschlüssel                     |
+| `bildungseinrichtung_id`  | INT          | FK → bildungseinrichtungen, NOT NULL | Zugehörige Bildungseinrichtung |
+| `gebaeude`                | VARCHAR(255) |                           | Gebäudebezeichnung                  |
+| `raum`                    | VARCHAR(100) |                           | Raum                                |
+| `beschreibung`            | TEXT         |                           | Freitext-Beschreibung               |
+
+#### `boxen`
+
+| Spalte         | Typ          | Constraints           | Beschreibung              |
+|----------------|--------------|-----------------------|---------------------------|
+| `id`           | INT          | PK, AUTO_INCREMENT    | Primärschlüssel           |
+| `box_nummer`   | VARCHAR(50)  |                       | Bezeichnung der Box       |
+| `standort_id`  | INT          | FK → standorte, NOT NULL | Zugehöriger Standort   |
+| `beschreibung` | TEXT         |                       | Freitext-Beschreibung     |
+
+#### `geraet_bilder`
+
+| Spalte           | Typ          | Constraints           | Beschreibung                       |
+|------------------|--------------|-----------------------|------------------------------------|
+| `id`             | INT          | PK, AUTO_INCREMENT    | Primärschlüssel                    |
+| `dateiname`      | VARCHAR(255) | NOT NULL, UNIQUE      | Dateiname im MinIO-Bucket          |
+| `mime_type`      | VARCHAR(50)  | NOT NULL              | MIME-Typ (z. B. `image/jpeg`)      |
+| `hochgeladen_am` | DATETIME(tz) | NOT NULL              | Upload-Zeitstempel (UTC)           |
+
+#### `geraete`
+
+| Spalte                 | Typ           | Constraints              | Beschreibung                                              |
+|------------------------|---------------|--------------------------|-----------------------------------------------------------|
+| `id`                   | INT           | PK, AUTO_INCREMENT       | Primärschlüssel                                           |
+| `inventar_nummer`      | VARCHAR(50)   | NOT NULL, UNIQUE, INDEX  | Inventarnummer                                            |
+| `name`                 | VARCHAR(100)  | NOT NULL                 | Anzeigename                                               |
+| `unique_name`          | VARCHAR(150)  | UNIQUE, INDEX            | Auto-generierter Name `{Kategorie}-{Hersteller}-{Nr}`     |
+| `kategorie`            | VARCHAR(50)   | INDEX                    | Gerätekategorie (z. B. `Laptop`)                          |
+| `hersteller`           | VARCHAR(50)   |                          | Hersteller                                                |
+| `modell`               | VARCHAR(50)   |                          | Modellbezeichnung                                         |
+| `seriennummer`         | VARCHAR(100)  | UNIQUE                   | Seriennummer                                              |
+| `status`               | ENUM          | NOT NULL, DEFAULT `verfügbar` | Gerätestatus (siehe unten)                           |
+| `anschaffungsdatum`    | DATE          |                          | Kaufdatum                                                 |
+| `bemerkungen`          | TEXT          |                          | Freitext-Bemerkungen                                      |
+| `bild_id`              | INT           | FK → geraet_bilder       | Zugewiesenes Bild                                         |
+| `box_id`               | INT           | FK → boxen               | Aufbewahrungsbox                                          |
+| `langzeit_ausleihe`    | BOOLEAN       | NOT NULL, DEFAULT `false`| Erlaubt Langzeit-Verlängerung (bis zu 80 Tage)            |
+
+**ENUM `GeraeteStatus`:** `verfügbar` · `ausgeliehen` · `reserviert` · `defekt` · `außer Betrieb` · `zur Zeit nicht vorhanden`
+
+#### `benutzer`
+
+| Spalte           | Typ          | Constraints           | Beschreibung                        |
+|------------------|--------------|-----------------------|-------------------------------------|
+| `id`             | INT          | PK, AUTO_INCREMENT    | Primärschlüssel                     |
+| `shibboleth_id`  | VARCHAR(100) | NOT NULL, UNIQUE, INDEX | SSO-Identifikator (Shibboleth)    |
+| `name`           | VARCHAR(150) | NOT NULL              | Vollständiger Name                  |
+| `email`          | VARCHAR(150) | NOT NULL, UNIQUE      | E-Mail-Adresse                      |
+| `rolle`          | ENUM         | NOT NULL, DEFAULT `Studierende_Mitarbeitende` | Benutzerrolle (siehe unten) |
+
+**ENUM `BenutzerRolle`:** `Studierende_Mitarbeitende` · `Administrator`
+
+#### `ausleihen`
+
+| Spalte                           | Typ      | Constraints                  | Beschreibung                                        |
+|----------------------------------|----------|------------------------------|-----------------------------------------------------|
+| `id`                             | INT      | PK, AUTO_INCREMENT           | Primärschlüssel                                     |
+| `geraet_id`                      | INT      | FK → geraete, NOT NULL       | Ausgeliehenes Gerät                                 |
+| `nutzer_id`                      | INT      | FK → benutzer, NOT NULL      | Ausleihender Nutzer                                 |
+| `startdatum`                     | DATETIME | NOT NULL                     | Ausleihbeginn (UTC)                                 |
+| `geplantes_rueckgabedatum`       | DATETIME | NOT NULL                     | Geplantes Rückgabedatum                             |
+| `tatsaechliches_rueckgabedatum`  | DATETIME |                              | Tatsächliches Rückgabedatum                         |
+| `status`                         | ENUM     | NOT NULL, DEFAULT `aktiv`    | Ausleihstatus (siehe unten)                         |
+| `verlaengerungen_anzahl`         | INT      | NOT NULL, DEFAULT `0`        | Anzahl der Verlängerungen                           |
+| `erinnerung_gesendet`            | BOOLEAN  | NOT NULL, DEFAULT `false`    | Frist-Erinnerungs-E-Mail wurde gesendet             |
+| `mahnung_gesendet`               | BOOLEAN  | NOT NULL, DEFAULT `false`    | Mahnungs-E-Mail wurde gesendet                      |
+| `zustand_bei_rueckgabe`          | TEXT     |                              | Zustandsbeschreibung bei Rückgabe                   |
+| `langzeit_verlaengerung_genutzt` | BOOLEAN  | NOT NULL, DEFAULT `false`    | Langzeit-Verlängerung (80 Tage) wurde bereits genutzt |
+
+**ENUM `AusleihStatus`:** `aktiv` · `überfällig` · `abgeschlossen`
+
+#### `reservierungen`
+
+| Spalte                  | Typ          | Constraints                  | Beschreibung                                         |
+|-------------------------|--------------|------------------------------|------------------------------------------------------|
+| `id`                    | INT          | PK, AUTO_INCREMENT           | Primärschlüssel                                      |
+| `geraet_id`             | INT          | FK → geraete, NOT NULL       | Reserviertes Gerät                                   |
+| `nutzer_id`             | INT          | FK → benutzer, NOT NULL      | Reservierender Nutzer                                |
+| `erstellt_am`           | DATETIME     | NOT NULL                     | Erstellungszeitpunkt (UTC)                           |
+| `reserviert_fuer_datum` | DATE         | NOT NULL                     | Datum, für das reserviert wird                       |
+| `ablaufdatum`           | DATETIME(tz) |                              | Ablaufzeitpunkt (Standard: +3 Tage ab Erstellung)    |
+| `status`                | ENUM         | NOT NULL, DEFAULT `aktiv`    | Reservierungsstatus (siehe unten)                    |
+
+**ENUM `ReservierungsStatus`:** `aktiv` · `erfüllt` · `storniert`
+
+#### `audit_logs`
+
+| Spalte        | Typ      | Constraints                  | Beschreibung                             |
+|---------------|----------|------------------------------|------------------------------------------|
+| `id`          | INT      | PK, AUTO_INCREMENT           | Primärschlüssel                          |
+| `zeitstempel` | DATETIME | NOT NULL, INDEX              | Zeitpunkt der Aktion (UTC)               |
+| `nutzer_id`   | INT      | FK → benutzer, NOT NULL      | Ausführender Nutzer                      |
+| `geraet_id`   | INT      | FK → geraete                 | Betroffenes Gerät (optional)             |
+| `aktion`      | ENUM     | NOT NULL                     | Art der Aktion (siehe unten)             |
+| `details`     | TEXT     |                              | Freitext-Details zur Aktion              |
+
+**ENUM `AktionType`:** `angelegt` · `bearbeitet` · `status_änderung` · `ausleihe` · `verlängerung` · `rückgabe` · `reservierung`
 
 ---
 
@@ -145,6 +257,8 @@ pip install -r requirements.txt
 `.env`-Datei im Projektverzeichnis anlegen:
 
 ```env
+ENV=development
+
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
@@ -162,6 +276,7 @@ MINIO_PUBLIC_ENDPOINT=localhost:9000
 MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
 MINIO_BUCKET=geraete-bilder
+MINIO_SECURE=false
 
 # SMTP (optional – wenn leer, werden E-Mails nur geloggt)
 SMTP_HOST=
@@ -169,6 +284,10 @@ SMTP_PORT=587
 SMTP_USER=
 SMTP_PASSWORD=
 SMTP_FROM=
+
+# SSO (Verbindung zu dhbw_repo_device)
+SYNC_SSO_VERIFY_URL=http://localhost:8000/accounts/sso/verify/
+SYNC_SSO_SECRET=change-me
 
 # Optional
 SENTRY_DSN=
@@ -228,6 +347,16 @@ POST /api/v1/auth/token
 ```
 
 Das Token wird als `Authorization: Bearer <token>` Header bei geschützten Endpunkten mitgegeben. Benutzer werden über eine `shibboleth_id` identifiziert. Der lokale Test-Login-Endpoint ist in der Produktionsumgebung (`ENV=production`) deaktiviert.
+
+### SSO-Flow
+
+Im Produktivbetrieb übernimmt **dhbw_repo_device** (das DHBW-SSO-System) die Authentifizierung. Der Ablauf:
+
+1. Der Nutzer wird von der Frontend-App zu dhbw_repo_device weitergeleitet.
+2. Nach erfolgreichem Login erhält das Frontend einen **One-Time-Token (OTT)**.
+3. Das Frontend sendet den OTT an `POST /api/v1/sso/callback`.
+4. Das Backend validiert den OTT bei `SYNC_SSO_VERIFY_URL` (mit `X-SSO-Secret`-Header).
+5. Bei Erfolg wird der Benutzer angelegt oder aktualisiert (Name, Rolle) und ein JWT zurückgegeben.
 
 ---
 
