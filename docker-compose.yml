@@ -48,6 +48,7 @@ services:
     build: .
     restart: unless-stopped
     environment:
+      ENV: ${ENV:-development}
       DB_HOST: db
       CORS_ORIGINS: ${CORS_ORIGINS}
       BASE_URL: ${BASE_URL}
@@ -63,6 +64,9 @@ services:
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
       SMTP_FROM: geraete@dhbw-heilbronn.de
+      SYNC_SSO_VERIFY_URL: ${SYNC_SSO_VERIFY_URL}
+      SYNC_SSO_SECRET: ${SYNC_SSO_SECRET}
+      SENTRY_DSN: ${SENTRY_DSN:-}
     depends_on:
       db:
         condition: service_healthy
