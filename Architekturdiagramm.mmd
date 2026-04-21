@@ -1,28 +1,41 @@
 flowchart TB
     subgraph CLIENT["🖥️ Client"]
-        FE["Webframework (Django)"]
+        FE["Frontend\n(Vue / React)"]
+    end
+
+    subgraph SSO_SVC["🔐 SSO-Dienst"]
+        DHBW_SSO["dhbw_repo_device\nShibboleth / OTT-Validierung"]
     end
 
     subgraph DOCKER["🐳 Docker Environment"]
 
-        subgraph API["⚡ FastAPI Application (Port 8050)"]
+        subgraph API["⚡ FastAPI Application"]
             MAIN["main.py\nFastAPI App · CORS · Lifespan"]
             ROUTER["API Router\n/api/v1"]
 
             subgraph ENDPOINTS["Endpunkte"]
                 direction LR
                 AUTH_EP["/auth\nToken-Login"]
-                GERAETE_EP["/geraete\nGeräte"]
+                SSO_EP["/sso\nSSO-Callback OTT→JWT"]
+                GERAETE_EP["/geraete\nGeräte CRUD"]
+                QR_EP["/geraete/{id}/qr-code\n/geraete/{id}/nfc-payload\n/nfc/resolve"]
+                STANDORTE_EP["/bildungseinrichtungen\n/standorte · /boxen"]
                 AUSLEIHEN_EP["/ausleihen\nAusleihen"]
                 RESERV_EP["/reservierungen\nReservierungen"]
                 BENUTZER_EP["/benutzer\nBenutzer"]
                 AUDIT_EP["/audit-logs\nAudit-Logs"]
+                ADMIN_EP["/admin/bilder\n/admin/geraete\n/admin/scheduler"]
+                EXPORT_EP["/export/ausleihen\nCSV-Export"]
+                STATISTIK_EP["/statistik\nKennzahlen"]
             end
 
             DEPS["deps.py\nAuth + DB Dependency Injection"]
             SECURITY["security.py\nJWT erstellen / dekodieren"]
             CONFIG["config.py\npydantic-settings (.env)"]
-            SCHEDULER["⏰ APScheduler\ntägl. 01:00 UTC\nÜberfälligkeit prüfen"]
+            MAIL["mail.py\nSMTP E-Mail-Versand"]
+            MINIO_CLIENT["minio_client.py\nMinIO-Client-Factory"]
+
+            SCHEDULER["⏰ APScheduler\n01:00 Überfälligkeit prüfen\n01:15 Reservierungen ablaufen\n08:00 Erinnerungen senden\n08:00 Mahnungen senden"]
         end
 
         subgraph DB["🗄️ MySQL Datenbank"]
@@ -32,6 +45,16 @@ flowchart TB
             T3["Ausleihen"]
             T4["Reservierungen"]
             T5["Audit Logs"]
+            T6["Standorte\nBildungseinrichtungen\nBoxen"]
+            T7["GeraetBilder"]
+        end
+
+        subgraph MINIO_SVC["🗂️ MinIO"]
+            BUCKET["Bucket: geraete-bilder\nPresigned-URLs (1 h)"]
+        end
+
+        subgraph MAIL_SVC["✉️ Mailpit (Dev)"]
+            MAILPIT["SMTP :1025\nWeb-UI :8025"]
         end
 
         ALEMBIC["Alembic\nDB-Migrationen"]
@@ -39,10 +62,15 @@ flowchart TB
 
     subgraph EXT["☁️ Externe Services"]
         SENTRY["Sentry\nError Monitoring (optional)"]
+        SMTP_EXT["SMTP-Server\n(Produktion)"]
     end
 
     %% Client → API
     FE -->|"HTTP Bearer JWT"| MAIN
+    FE -->|"OTT nach SSO-Login"| SSO_EP
+
+    %% SSO flow
+    SSO_EP -->|"OTT validieren\nX-SSO-Secret"| DHBW_SSO
 
     %% App-Kern
     MAIN --> ROUTER
@@ -52,23 +80,38 @@ flowchart TB
 
     %% Router → Endpoints
     ROUTER --> AUTH_EP
+    ROUTER --> SSO_EP
     ROUTER --> GERAETE_EP
+    ROUTER --> QR_EP
+    ROUTER --> STANDORTE_EP
     ROUTER --> AUSLEIHEN_EP
     ROUTER --> RESERV_EP
     ROUTER --> BENUTZER_EP
     ROUTER --> AUDIT_EP
+    ROUTER --> ADMIN_EP
+    ROUTER --> EXPORT_EP
+    ROUTER --> STATISTIK_EP
 
     %% Endpoints → deps
-    AUTH_EP --> DEPS
-    GERAETE_EP --> DEPS
-    AUSLEIHEN_EP --> DEPS
-    RESERV_EP --> DEPS
-    BENUTZER_EP --> DEPS
-    AUDIT_EP --> DEPS
+    AUTH_EP & SSO_EP & GERAETE_EP & QR_EP & STANDORTE_EP --> DEPS
+    AUSLEIHEN_EP & RESERV_EP & BENUTZER_EP & AUDIT_EP --> DEPS
+    ADMIN_EP & EXPORT_EP & STATISTIK_EP --> DEPS
 
     %% deps → intern
     DEPS --> SECURITY
     DEPS -->|"SQLAlchemy Session"| DB
+
+    %% Bild-Upload
+    ADMIN_EP -->|"Upload / Presigned-URL"| MINIO_CLIENT
+    GERAETE_EP -->|"Presigned-URL"| MINIO_CLIENT
+    MINIO_CLIENT --> BUCKET
+
+    %% E-Mail
+    SCHEDULER -->|"Erinnerung / Mahnung"| MAIL
+    AUSLEIHEN_EP -->|"Bestätigung"| MAIL
+    RESERV_EP -->|"Bestätigung"| MAIL
+    MAIL -->|"Dev"| MAILPIT
+    MAIL -->|"Prod"| SMTP_EXT
 
     %% Scheduler → DB
     SCHEDULER -->|"SQLAlchemy Session"| DB
